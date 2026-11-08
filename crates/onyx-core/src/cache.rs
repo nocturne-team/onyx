@@ -74,12 +74,11 @@ impl ResponseCache {
 
     fn put_at(&self, key: &str, body: String, persist: bool, fetched_at: u64) {
         let entry = Entry { fetched_at, body };
-        if persist {
-            if let Some(path) = self.path_for(key) {
-                if let Err(e) = write_atomic(&path, &entry) {
-                    tracing::warn!("could not persist cache entry {}: {e}", path.display());
-                }
-            }
+        if persist
+            && let Some(path) = self.path_for(key)
+            && let Err(e) = write_atomic(&path, &entry)
+        {
+            tracing::warn!("could not persist cache entry {}: {e}", path.display());
         }
         let mut memory = self.memory.lock().unwrap();
         if memory.len() >= MAX_MEMORY_ENTRIES {

@@ -142,10 +142,10 @@ pub(crate) async fn version_manifest_from(
         .and_then(|modified| SystemTime::now().duration_since(modified).ok())
         .is_some_and(|age| age < MANIFEST_MAX_AGE);
 
-    if let (true, Some(bytes)) = (fresh, &cached) {
-        if let Ok(manifest) = serde_json::from_slice(bytes) {
-            return Ok(manifest);
-        }
+    if let (true, Some(bytes)) = (fresh, &cached)
+        && let Ok(manifest) = serde_json::from_slice(bytes)
+    {
+        return Ok(manifest);
     }
 
     match get_bytes(http, url).await {

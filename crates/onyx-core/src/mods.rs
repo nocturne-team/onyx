@@ -253,16 +253,16 @@ fn read_metadata(jar: &Path) -> Option<Metadata> {
         entry.read_to_string(&mut text).ok()?;
         Some(text)
     };
-    if let Some(text) = read("quilt.mod.json") {
-        if let Ok(quilt) = serde_json::from_str::<QuiltModJson>(&text) {
-            let meta = quilt.quilt_loader.metadata;
-            return Some(Metadata {
-                id: quilt.quilt_loader.id,
-                version: quilt.quilt_loader.version,
-                name: meta.as_ref().and_then(|m| m.name.clone()),
-                description: meta.and_then(|m| m.description),
-            });
-        }
+    if let Some(text) = read("quilt.mod.json")
+        && let Ok(quilt) = serde_json::from_str::<QuiltModJson>(&text)
+    {
+        let meta = quilt.quilt_loader.metadata;
+        return Some(Metadata {
+            id: quilt.quilt_loader.id,
+            version: quilt.quilt_loader.version,
+            name: meta.as_ref().and_then(|m| m.name.clone()),
+            description: meta.and_then(|m| m.description),
+        });
     }
     for toml in ["META-INF/neoforge.mods.toml", "META-INF/mods.toml"] {
         if let Some(text) = read(toml) {

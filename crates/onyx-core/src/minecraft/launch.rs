@@ -111,11 +111,11 @@ pub fn arguments(spec: &LaunchSpec) -> Vec<String> {
     // and need Mojang's patched config instead. Newer configs are skipped
     // because they turn the console output into XML.
     args.push("-Dlog4j2.formatMsgNoLookups=true".into());
-    if let Some(logging) = version.logging.as_ref().and_then(|l| l.client.as_ref()) {
-        if logging.file.id == "client-1.7.xml" {
-            let path = log_config_path(spec.meta, &logging.file.id);
-            args.push(logging.argument.replace("${path}", &path.to_string_lossy()));
-        }
+    if let Some(logging) = version.logging.as_ref().and_then(|l| l.client.as_ref())
+        && logging.file.id == "client-1.7.xml"
+    {
+        let path = log_config_path(spec.meta, &logging.file.id);
+        args.push(logging.argument.replace("${path}", &path.to_string_lossy()));
     }
 
     args.push(version.main_class.clone());

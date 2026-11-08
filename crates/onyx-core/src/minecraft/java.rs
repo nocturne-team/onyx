@@ -353,10 +353,10 @@ pub async fn detect() -> Vec<JavaInstall> {
         if !candidate.is_file() {
             continue;
         }
-        if let Some(install) = probe(&candidate).await {
-            if !found.iter().any(|f| f.path == install.path) {
-                found.push(install);
-            }
+        if let Some(install) = probe(&candidate).await
+            && !found.iter().any(|f| f.path == install.path)
+        {
+            found.push(install);
         }
     }
     found.sort_by(|a, b| b.major.cmp(&a.major).then_with(|| a.path.cmp(&b.path)));

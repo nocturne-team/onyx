@@ -333,12 +333,12 @@ impl Client {
         let url = format!("{}{path}", self.base);
         let key = cache_key(&url, query);
 
-        if let Some(policy) = cache {
-            if let Some(body) = self.cache.get(&key, policy.max_age) {
-                match serde_json::from_str(&body) {
-                    Ok(value) => return Ok(value),
-                    Err(e) => tracing::debug!("ignoring undecodable cache entry: {e}"),
-                }
+        if let Some(policy) = cache
+            && let Some(body) = self.cache.get(&key, policy.max_age)
+        {
+            match serde_json::from_str(&body) {
+                Ok(value) => return Ok(value),
+                Err(e) => tracing::debug!("ignoring undecodable cache entry: {e}"),
             }
         }
 

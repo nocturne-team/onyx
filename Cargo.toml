@@ -6,7 +6,7 @@ members = ["crates/onyx-core", "src-tauri"]
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
-rust-version = "1.85"
+rust-version = "1.90"
 
 [workspace.dependencies]
 onyx-core = { path = "crates/onyx-core" }

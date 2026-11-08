@@ -83,10 +83,10 @@ pub async fn asset_index(
         .join("indexes")
         .join(format!("{}.json", version.asset_index.id));
     let what = format!("asset index {}", version.asset_index.id);
-    if let Ok(bytes) = tokio::fs::read(&path).await {
-        if let Ok(index) = parse(&bytes, &what) {
-            return Ok(index);
-        }
+    if let Ok(bytes) = tokio::fs::read(&path).await
+        && let Ok(index) = parse(&bytes, &what)
+    {
+        return Ok(index);
     }
     let bytes = get_bytes(http, &version.asset_index.url).await?;
     let index = parse(&bytes, &what)?;

@@ -135,10 +135,10 @@ pub async fn profile(
     let id = format!("{}-loader-{loader_version}-{game_version}", loader.name());
     let path = meta.version_json(&id);
     let what = format!("the {id} profile");
-    if let Ok(bytes) = tokio::fs::read(&path).await {
-        if let Ok(profile) = parse(&bytes, &what) {
-            return Ok(profile);
-        }
+    if let Ok(bytes) = tokio::fs::read(&path).await
+        && let Ok(profile) = parse(&bytes, &what)
+    {
+        return Ok(profile);
     }
     let url = format!(
         "{}/versions/loader/{game_version}/{loader_version}/profile/json",

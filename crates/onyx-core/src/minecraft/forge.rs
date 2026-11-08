@@ -244,12 +244,11 @@ pub async fn install(
     let id = format!("{}-{}-{loader_version}", loader.name(), vanilla.id);
     let dir = meta.version_dir(&id);
     let version_path = dir.join("version.json");
-    if dir.join(MARKER).is_file() {
-        if let Ok(bytes) = tokio::fs::read(&version_path).await {
-            if let Ok(version) = serde_json::from_slice(&bytes) {
-                return Ok(version);
-            }
-        }
+    if dir.join(MARKER).is_file()
+        && let Ok(bytes) = tokio::fs::read(&version_path).await
+        && let Ok(version) = serde_json::from_slice(&bytes)
+    {
+        return Ok(version);
     }
 
     let installer = dir.join("installer.jar");
