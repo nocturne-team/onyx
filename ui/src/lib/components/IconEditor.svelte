@@ -3,6 +3,7 @@
   import {
     backgroundCss,
     backgrounds,
+    prideFlags,
     categoryNames,
     randomIconConfig,
     symbols,
@@ -72,6 +73,24 @@
                 onclick={() => (config.background = bg.id)}
               >
                 {#if config.background === bg.id}<Check size={20} />{/if}
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section>
+          <h3>Pride flags</h3>
+          <div class="backgrounds">
+            {#each prideFlags as flag (flag.id)}
+              <button
+                class="swatch"
+                class:selected={config.background === flag.id}
+                style:background-image={backgroundCss(flag.id)}
+                title={flag.name}
+                aria-label={flag.name}
+                onclick={() => (config.background = flag.id)}
+              >
+                {#if config.background === flag.id}<Check size={20} />{/if}
               </button>
             {/each}
           </div>
@@ -217,6 +236,10 @@
     border-radius: var(--radius);
     color: #fff;
     border: 2px solid transparent;
+    /* Without this the gradient tiles into the transparent border and the
+       last stripe shows up again along the top edge. */
+    background-origin: border-box;
+    background-repeat: no-repeat;
   }
 
   .swatch.selected {

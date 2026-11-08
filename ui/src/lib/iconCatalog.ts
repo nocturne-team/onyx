@@ -34,6 +34,50 @@ export const backgrounds: Background[] = [
   { id: "dark-gray", name: "Dark gray", top: "#1B1D29", bottom: "#252731" },
 ];
 
+/**
+ * Pride flags as icon backgrounds. Picked on purpose in the icon editor, so
+ * they are not in `backgrounds` and never come out of Randomize or the
+ * hash-based default. Stripes are equal height; repeat a color to weight it.
+ */
+export interface PrideFlag {
+  id: string;
+  name: string;
+  stripes: string[];
+}
+
+export const prideFlags: PrideFlag[] = [
+  { id: "pride-rainbow", name: "Rainbow", stripes: ["#E40303", "#FF8C00", "#FFED00", "#008026", "#004DFF", "#750787"] },
+  { id: "pride-trans", name: "Transgender", stripes: ["#5BCEFA", "#F5A9B8", "#FFFFFF", "#F5A9B8", "#5BCEFA"] },
+  { id: "pride-bi", name: "Bisexual", stripes: ["#D60270", "#D60270", "#9B4F96", "#0038A8", "#0038A8"] },
+  { id: "pride-pan", name: "Pansexual", stripes: ["#FF218C", "#FFD800", "#21B1FF"] },
+  { id: "pride-lesbian", name: "Lesbian", stripes: ["#D52D00", "#EF7627", "#FF9A56", "#FFFFFF", "#D162A4", "#B55690", "#A30262"] },
+  { id: "pride-ace", name: "Asexual", stripes: ["#000000", "#A3A3A3", "#FFFFFF", "#800080"] },
+  { id: "pride-aro", name: "Aromantic", stripes: ["#3DA542", "#A7D379", "#FFFFFF", "#A9A9A9", "#000000"] },
+  { id: "pride-nonbinary", name: "Non-binary", stripes: ["#FCF434", "#FFFFFF", "#9C59D1", "#2C2C2C"] },
+  { id: "pride-demigirl", name: "Demigirl", stripes: ["#808080", "#C4C4C4", "#FDADC8", "#FFFFFF", "#FDADC8", "#C4C4C4", "#808080"] },
+  { id: "pride-demiboy", name: "Demiboy", stripes: ["#808080", "#C4C4C4", "#9ADAEB", "#FFFFFF", "#9ADAEB", "#C4C4C4", "#808080"] },
+  { id: "pride-genderfluid", name: "Genderfluid", stripes: ["#FF76A4", "#FFFFFF", "#C011D7", "#000000", "#2F3CBE"] },
+  { id: "pride-genderqueer", name: "Genderqueer", stripes: ["#B57EDC", "#FFFFFF", "#4A8123"] },
+  { id: "pride-agender", name: "Agender", stripes: ["#000000", "#BABABA", "#FFFFFF", "#B7F684", "#FFFFFF", "#BABABA", "#000000"] },
+  { id: "pride-bigender", name: "Bigender", stripes: ["#C479A2", "#EDA5CD", "#D6C7E8", "#FFFFFF", "#D6C7E8", "#9AC7E8", "#6D82D1"] },
+  { id: "pride-gay", name: "Gay men", stripes: ["#078D70", "#26CEAA", "#98E8C1", "#FFFFFF", "#7BADE2", "#5049CC", "#3D1A78"] },
+  { id: "pride-polysexual", name: "Polysexual", stripes: ["#F714BA", "#01D66A", "#1594F6"] },
+  { id: "pride-omnisexual", name: "Omnisexual", stripes: ["#FE9ACE", "#FF53BF", "#200044", "#6760FE", "#8EA6FF"] },
+  { id: "pride-aroace", name: "Aroace", stripes: ["#E28C00", "#ECCD00", "#FFFFFF", "#62AEDC", "#203856"] },
+  { id: "pride-graysexual", name: "Graysexual", stripes: ["#740194", "#AEB1B2", "#FFFFFF", "#AEB1B2", "#740194"] },
+  { id: "pride-abrosexual", name: "Abrosexual", stripes: ["#46D294", "#A2E9C8", "#FFFFFF", "#F78BB3", "#EB4E8A"] },
+  { id: "pride-androgyne", name: "Androgyne", stripes: ["#FE007F", "#9832FF", "#00B8E7"] },
+  { id: "pride-pangender", name: "Pangender", stripes: ["#FFF798", "#FFDDCD", "#FFEBFB", "#FFFFFF", "#FFEBFB", "#FFDDCD", "#FFF798"] },
+  { id: "pride-neutrois", name: "Neutrois", stripes: ["#FFFFFF", "#1F9F00", "#000000"] },
+  { id: "pride-polyamory", name: "Polyamory", stripes: ["#009FE3", "#E50000", "#000000"] },
+];
+
+function stripesCss(colors: string[]): string {
+  const step = 100 / colors.length;
+  const parts = colors.map((c, i) => `${c} ${+(i * step).toFixed(3)}% ${+((i + 1) * step).toFixed(3)}%`);
+  return `linear-gradient(to bottom, ${parts.join(", ")})`;
+}
+
 export type SymbolCategory = "loader" | "modded" | "vanilla";
 
 export interface IconSymbol {
@@ -84,6 +128,8 @@ export const categoryNames: Record<SymbolCategory, string> = {
 };
 
 export function backgroundCss(id: string): string {
+  const flag = prideFlags.find((f) => f.id === id);
+  if (flag) return stripesCss(flag.stripes);
   const bg = backgrounds.find((b) => b.id === id) ?? backgrounds[0];
   return `linear-gradient(to bottom, ${bg.top}, ${bg.bottom})`;
 }
