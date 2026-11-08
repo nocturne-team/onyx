@@ -172,6 +172,21 @@ impl Client {
         game_versions: &[&str],
         cache: Option<CachePolicy>,
     ) -> Result<Vec<Version>, ApiError> {
+        self.project_versions_as(project, loaders, game_versions, None, cache)
+            .await
+    }
+
+    /// Like [`Self::project_versions`], as the token's user, so versions of
+    /// their own non-public projects are included. Don't persist that cache.
+    pub async fn project_versions_as(
+        &self,
+        project: &str,
+        loaders: &[&str],
+        game_versions: &[&str],
+        token: Option<&str>,
+        cache: Option<CachePolicy>,
+    ) -> Result<Vec<Version>, ApiError> {
+        debug_assert!(token.is_none() || cache.is_none_or(|c| !c.persist));
         let mut query = Vec::new();
         if !loaders.is_empty() {
             query.push((
@@ -188,7 +203,7 @@ impl Client {
         self.get_cached(
             &format!("/v2/project/{project}/version"),
             &query,
-            None,
+            token,
             cache,
         )
         .await

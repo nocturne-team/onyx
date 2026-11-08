@@ -58,11 +58,21 @@ export const installs = $state<Record<string, "installing" | "installed" | { err
 
 export const installKey = (instanceId: string, projectId: string) => `${instanceId}/${projectId}`;
 
-export async function installToInstance(instanceId: string, projectId: string, projectType: string) {
+export async function installToInstance(
+  instanceId: string,
+  projectId: string,
+  projectType: string,
+  versionId: string | null = null,
+) {
   const key = installKey(instanceId, projectId);
   installs[key] = "installing";
   try {
-    await invoke<InstalledFile[]>("install_to_instance", { id: instanceId, projectId, projectType });
+    await invoke<InstalledFile[]>("install_to_instance", {
+      id: instanceId,
+      projectId,
+      projectType,
+      versionId,
+    });
     installs[key] = "installed";
   } catch (e) {
     const error = String(e);

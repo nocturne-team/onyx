@@ -95,9 +95,10 @@ pub async fn project_versions(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<Version>, String> {
+    let token = modrinth_token(&state);
     state
         .modrinth
-        .project_versions(&id, &[], &[], Some(CachePolicy::SHORT))
+        .project_versions_as(&id, &[], &[], token.as_deref(), Some(CachePolicy::SHORT))
         .await
         .map_err(|e| e.to_string())
 }

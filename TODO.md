@@ -2,7 +2,7 @@
 
 ## Next
 
-- [ ] Project page: install a specific version from the Versions tab; versions of your own non-public projects (the versions call doesn't send the token yet)
+- [ ] Browse: loader and game version filters outside the "install into instance" mode
 
 ## Later
 
@@ -12,7 +12,6 @@
 - [ ] Settings: memory per instance and a default (instance.json already has `maxMemoryMb`)
 - [ ] Forge before 1.13 (old installer format with `versionInfo`)
 - [ ] "Support Forge" link on Forge instances (Forge's version.json asks automated installers for it)
-- [ ] Browse: loader and game version filters outside the "install into instance" mode
 - [ ] Cancel an install that's still preparing
 
 ## Before release

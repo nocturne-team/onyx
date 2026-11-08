@@ -1,11 +1,30 @@
 <script lang="ts">
   import { Check, Download, LoaderCircle, X } from "@lucide/svelte";
   import { canInstallInto, installKey, installToInstance, installs } from "../content.svelte";
-  import { instances, loaderNames } from "../instances.svelte";
+  import { instances, loaderNames, type Instance } from "../instances.svelte";
   import type { SearchHit } from "../modrinth";
   import InstanceIcon from "./InstanceIcon.svelte";
 
-  let { hit, onClose }: { hit: SearchHit; onClose: () => void } = $props();
+  interface Props {
+    hit: SearchHit;
+    /** A specific version to install; otherwise the newest compatible one. */
+    version?: { id: string; versionNumber: string; gameVersions: string[]; loaders: string[] };
+    onClose: () => void;
+  }
+
+  let { hit, version, onClose }: Props = $props();
+
+  /** Why `instance` can't take this, or null if it can. */
+  function blocker(instance: Instance): string | null {
+    if (!canInstallInto(instance, hit.projectType)) return "needs a mod loader";
+    if (!version) return null;
+    if (!version.gameVersions.includes(instance.gameVersion)) return `not for ${instance.gameVersion}`;
+    const loaders = instance.loader === "quilt" ? ["quilt", "fabric"] : [instance.loader];
+    if (hit.projectType === "mod" && !version.loaders.some((l) => loaders.includes(l))) {
+      return `not for ${loaderNames[instance.loader]}`;
+    }
+    return null;
+  }
 </script>
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onClose()} />
@@ -21,7 +40,7 @@
     onclick={(e) => e.stopPropagation()}
   >
     <header>
-      <h2 id="install-title">Install {hit.title}</h2>
+      <h2 id="install-title">Install {hit.title}{version ? ` ${version.versionNumber}` : ""}</h2>
       <button class="close" aria-label="Close" onclick={onClose}><X size={18} /></button>
     </header>
     <div class="body">
@@ -30,7 +49,8 @@
       {/if}
       {#each instances.list as instance (instance.id)}
         {@const state = installs[installKey(instance.id, hit.projectId)]}
-        {@const compatible = canInstallInto(instance, hit.projectType)}
+        {@const problem = blocker(instance)}
+        {@const compatible = problem === null}
         <div class="row">
           <InstanceIcon {instance} size={40} />
           <div class="main">
@@ -38,7 +58,7 @@
             <span class="muted">
               {loaderNames[instance.loader]}
               {instance.gameVersion}
-              {#if !compatible}· needs a mod loader{/if}
+              {#if problem}· {problem}{/if}
             </span>
             {#if typeof state === "object"}<span class="error">{state.error}</span>{/if}
           </div>
@@ -50,7 +70,8 @@
             <button
               class="install"
               disabled={!compatible}
-              onclick={() => installToInstance(instance.id, hit.projectId, hit.projectType)}
+              onclick={() =>
+                installToInstance(instance.id, hit.projectId, hit.projectType, version?.id ?? null)}
             >
               <Download size={16} /> Install
             </button>

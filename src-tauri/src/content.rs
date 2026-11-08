@@ -25,6 +25,7 @@ pub async fn install_to_instance(
     id: String,
     project_id: String,
     project_type: String,
+    version_id: Option<String>,
 ) -> Result<Vec<InstalledFile>, String> {
     if state
         .games
@@ -43,9 +44,15 @@ pub async fn install_to_instance(
         loader: instance.loader,
         game_version: &instance.game_version,
     };
-    content::install_project(&state.modrinth, &target, &project_id, &project_type)
-        .await
-        .map_err(|e| e.to_string())
+    content::install_project(
+        &state.modrinth,
+        &target,
+        &project_id,
+        &project_type,
+        version_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Installed files with newer compatible versions on Modrinth.

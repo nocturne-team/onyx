@@ -13,6 +13,7 @@
   } from "@lucide/svelte";
   import { invoke } from "@tauri-apps/api/core";
   import InstallButton from "../components/InstallButton.svelte";
+  import InstallPopup from "../components/InstallPopup.svelte";
   import { compactNumber, relativeTime } from "../format";
   import { renderMarkdown } from "../markdown";
   import {
@@ -33,6 +34,7 @@
   let versionsError = $state<string | null>(null);
   let loaderFilter = $state("");
   let gameFilter = $state("");
+  let installing = $state<ProjectVersion | null>(null);
 
   $effect(() => {
     const current = id;
@@ -182,6 +184,13 @@
                   <span class="muted loaders">{version.loaders.join(", ")}</span>
                   <span class="muted games">{gameRange(version.gameVersions)}</span>
                   <span class="muted">{relativeTime(new Date(version.datePublished))}</span>
+                  {#if page.projectType !== "modpack"}
+                    <button class="version-install" title="Install this version" onclick={() => (installing = version)}>
+                      <Download size={16} />
+                    </button>
+                  {:else}
+                    <span></span>
+                  {/if}
                 </div>
               {/each}
               {#if shownVersions.length > 100}
@@ -238,6 +247,10 @@
     </div>
   {/if}
 </div>
+
+{#if installing && page}
+  <InstallPopup hit={pageAsHit(page)} version={installing} onClose={() => (installing = null)} />
+{/if}
 
 <style>
   .page {
@@ -443,7 +456,7 @@
 
   .version {
     display: grid;
-    grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: 30px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto 34px;
     align-items: center;
     gap: 12px;
     padding: 10px 12px;
@@ -468,6 +481,20 @@
 
   .loaders {
     text-transform: capitalize;
+  }
+
+  .version-install {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--bg-button);
+  }
+
+  .version-install:hover {
+    background: var(--brand-bg);
+    color: var(--brand-text);
   }
 
   .type {

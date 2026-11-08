@@ -88,13 +88,15 @@ pub struct InstalledFile {
     pub version_number: String,
 }
 
-/// Installs the newest compatible version of `project_id` and, recursively,
-/// its required dependencies. Dependencies already present are skipped.
+/// Installs `version_id` of `project_id` (or the newest compatible version
+/// when `None`) and, recursively, its required dependencies. Dependencies
+/// already present are skipped.
 pub async fn install_project(
     client: &Client,
     target: &Target<'_>,
     project_id: &str,
     project_type: &str,
+    version_id: Option<&str>,
 ) -> Result<Vec<InstalledFile>, ContentError> {
     let folder = folder_for(project_type)?;
     let loaders = target.loaders(project_type)?;
@@ -108,7 +110,7 @@ pub async fn install_project(
     let mut seen: HashSet<String> = HashSet::from([project_id.to_owned()]);
     // (project, exact version if the dependency pins one)
     let mut queue: VecDeque<(String, Option<String>)> =
-        VecDeque::from([(project_id.to_owned(), None)]);
+        VecDeque::from([(project_id.to_owned(), version_id.map(str::to_owned))]);
 
     while let Some((project, pinned)) = queue.pop_front() {
         let is_root = project == project_id;
@@ -476,7 +478,7 @@ mod tests {
             loader: Loader::Fabric,
             game_version: "26.3",
         };
-        let installed = install_project(&client, &target, "modmenu", "mod")
+        let installed = install_project(&client, &target, "modmenu", "mod", None)
             .await
             .unwrap();
         let files: Vec<&str> = installed.iter().map(|f| f.file_name.as_str()).collect();
@@ -506,11 +508,11 @@ mod tests {
             game_version: "26.3",
         };
         assert!(matches!(
-            install_project(&client, &vanilla, "x", "mod").await,
+            install_project(&client, &vanilla, "x", "mod", None).await,
             Err(ContentError::VanillaMods)
         ));
         assert!(matches!(
-            install_project(&client, &vanilla, "x", "resourcepack").await,
+            install_project(&client, &vanilla, "x", "resourcepack", None).await,
             Err(ContentError::NoCompatibleVersion(_))
         ));
     }

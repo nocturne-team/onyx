@@ -3,6 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { account, signInWithBrowser } from "../account.svelte";
   import { compactNumber, relativeTime } from "../format";
+  import { openProject } from "../navigation.svelte";
 
   /** Mirrors `onyx_core::modrinth::Project` (the fields we show). */
   interface Project {
@@ -157,7 +158,13 @@
 
   <div class="list">
     {#each visible as project (project.id)}
-      <article class="row">
+      <div
+        class="row"
+        role="link"
+        tabindex="0"
+        onclick={() => openProject(project.id)}
+        onkeydown={(e) => e.key === "Enter" && openProject(project.id)}
+      >
         {#if project.iconUrl}
           <img class="icon" src={project.iconUrl} alt="" loading="lazy" />
         {:else}
@@ -184,7 +191,7 @@
           <span title="Followers"><Heart size={15} />{compactNumber(project.followers)}</span>
           <span title="Updated"><CalendarDays size={15} />{relativeTime(new Date(project.updated))}</span>
         </div>
-      </article>
+      </div>
     {/each}
   </div>
 {/if}
@@ -279,11 +286,16 @@
   }
 
   .row {
+    cursor: pointer;
     display: flex;
     gap: 16px;
     padding: 16px;
     background: var(--bg-raised);
     border-radius: var(--radius-lg);
+  }
+
+  .row:hover {
+    outline: 2px solid var(--border);
   }
 
   .icon {
