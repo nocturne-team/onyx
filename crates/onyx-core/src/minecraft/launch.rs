@@ -250,6 +250,11 @@ mod tests {
         }
     }
 
+    /// The tests build paths from "/m", which `Path::join` extends with `\` on Windows.
+    fn unix_paths(args: Vec<String>) -> Vec<String> {
+        args.into_iter().map(|a| a.replace('\\', "/")).collect()
+    }
+
     fn env() -> Environment {
         Environment {
             os: Os::Linux,
@@ -297,7 +302,7 @@ mod tests {
             max_memory_mb: None,
             launcher_version: "0.1.0",
         };
-        let args = arguments(&spec);
+        let args = unix_paths(arguments(&spec));
         assert_eq!(
             args,
             [
@@ -355,7 +360,7 @@ mod tests {
             max_memory_mb: None,
             launcher_version: "0.1.0",
         };
-        let args = arguments(&spec);
+        let args = unix_paths(arguments(&spec));
         assert_eq!(
             args,
             [
