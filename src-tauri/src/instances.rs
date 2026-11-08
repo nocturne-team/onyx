@@ -59,6 +59,8 @@ pub struct Game {
     /// Cancels preparing (downloads, loader install, modpack install).
     pub abort: Option<tokio::task::AbortHandle>,
     pub log: VecDeque<String>,
+    /// Unix seconds when Java started, for Discord's elapsed time.
+    pub running_since: Option<u64>,
 }
 
 pub type Games = Mutex<HashMap<String, Game>>;
@@ -680,6 +682,7 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
         game.phase = Some(Phase::Running);
         game.stage = None;
         game.kill = Some(kill_tx);
+        game.running_since = Some(now_secs());
     }
     emit(
         app,
@@ -691,6 +694,7 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
             error: None,
         },
     );
+    crate::presence::refresh(app);
 
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
@@ -777,4 +781,5 @@ fn finish(
             error,
         },
     );
+    crate::presence::refresh(app);
 }

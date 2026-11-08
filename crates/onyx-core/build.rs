@@ -1,4 +1,4 @@
-//! Bakes OAuth client IDs from the environment (or the workspace `.env`) into the
+//! Bakes OAuth client IDs and the Discord app ID from the environment (or the workspace `.env`) into the
 //! crate at compile time, and stops release builds that still use a borrowed
 //! Microsoft client ID.
 
@@ -8,6 +8,7 @@ const ENV_KEYS: &[&str] = &[
     "ONYX_MODRINTH_CLIENT_ID",
     "ONYX_MODRINTH_CLIENT_SECRET",
     "ONYX_MSA_CLIENT_ID",
+    "ONYX_DISCORD_APP_ID",
 ];
 
 /// Prism Launcher's Azure client ID. Fine for local dev, never for anything we ship.

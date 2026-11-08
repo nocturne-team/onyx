@@ -29,6 +29,8 @@ pub struct Settings {
     pub max_concurrent_downloads: u32,
     /// Download speed cap across the whole app in KiB/s; `None` is unlimited.
     pub download_limit_kib: Option<u32>,
+    /// Show the running instance in Discord.
+    pub discord_rich_presence: bool,
 }
 
 impl Default for Settings {
@@ -40,6 +42,7 @@ impl Default for Settings {
             java_overrides: BTreeMap::new(),
             max_concurrent_downloads: crate::download::DEFAULT_CONCURRENCY as u32,
             download_limit_kib: None,
+            discord_rich_presence: true,
         }
     }
 }
@@ -142,6 +145,7 @@ mod tests {
             java_overrides: BTreeMap::from([(21, PathBuf::from("/usr/lib/jvm/java-21/bin/java"))]),
             max_concurrent_downloads: 4,
             download_limit_kib: Some(2048),
+            discord_rich_presence: false,
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);

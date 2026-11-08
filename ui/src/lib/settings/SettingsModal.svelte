@@ -224,6 +224,25 @@
               <strong>{speedLabel(speedSteps[speedIndex])}</strong>
             </div>
           {/if}
+        {:else if active === "privacy"}
+          <div class="toggle-row">
+            <div>
+              <h3>Discord rich presence</h3>
+              <p class="hint">
+                Shows the instance you're playing on your Discord profile. Turn it off and Onyx
+                won't appear there at all.
+              </p>
+            </div>
+            <button
+              class="switch"
+              role="switch"
+              aria-label="Discord rich presence"
+              aria-checked={settings.discordRichPresence}
+              onclick={() => updateSettings({ discordRichPresence: !settings.discordRichPresence })}
+            >
+              <span></span>
+            </button>
+          </div>
         {:else}
           <p class="hint">Not built yet.</p>
         {/if}

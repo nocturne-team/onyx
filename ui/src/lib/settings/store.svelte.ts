@@ -14,6 +14,8 @@ export interface Settings {
   maxConcurrentDownloads: number;
   /** App-wide download speed cap in KiB/s; null is unlimited. */
   downloadLimitKib: number | null;
+  /** Show the running instance on the user's Discord profile. */
+  discordRichPresence: boolean;
 }
 
 export interface AppInfo {
@@ -29,6 +31,7 @@ export const settings = $state<Settings>({
   javaOverrides: {},
   maxConcurrentDownloads: 10,
   downloadLimitKib: null,
+  discordRichPresence: true,
 });
 
 export async function loadSettings() {

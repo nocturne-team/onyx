@@ -7,6 +7,7 @@ mod content;
 mod icons;
 mod instances;
 mod minecraft_account;
+mod presence;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ use account::Session;
 use onyx_core::auth::Accounts;
 use onyx_core::auth::microsoft::MinecraftSession;
 use onyx_core::cache::ResponseCache;
+use onyx_core::discord::Presence;
 use onyx_core::icons::IconCache;
 use onyx_core::minecraft::MetaDirs;
 use onyx_core::{Settings, modrinth, paths};
@@ -43,6 +45,7 @@ pub struct AppState {
     pub games: instances::Games,
     /// Log of each instance's last finished run.
     pub last_logs: Mutex<HashMap<String, Vec<String>>>,
+    pub presence: Presence,
 }
 
 fn main() {
@@ -61,6 +64,11 @@ fn main() {
         })
         .unwrap_or_default();
     settings.apply_download_limits();
+    let (presence, presence_task) = Presence::new(
+        onyx_core::config::DISCORD_APP_ID,
+        settings.discord_rich_presence,
+    );
+    tauri::async_runtime::spawn(presence_task);
 
     let data_dir = paths::data_dir().expect("no home directory to keep Onyx's data in");
     let paths = Paths {
@@ -91,6 +99,7 @@ fn main() {
             minecraft_login_cancel: Mutex::new(None),
             games: Mutex::new(HashMap::new()),
             last_logs: Mutex::new(HashMap::new()),
+            presence,
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

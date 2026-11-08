@@ -47,6 +47,7 @@ pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<()
     let path = paths::settings_file().ok_or("could not find a data directory")?;
     settings.save(&path).map_err(|e| e.to_string())?;
     settings.apply_download_limits();
+    state.presence.set_enabled(settings.discord_rich_presence);
     *state.settings.lock().unwrap() = settings;
     Ok(())
 }

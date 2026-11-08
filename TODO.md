@@ -14,6 +14,7 @@
 - [ ] Selective prism launcher instance import
 - [ ] Discord Rich Presence
 - [ ] Total physical memory on Windows (the memory slider falls back to a 16 GB cap there)
+- [ ] Discord invites...... (either by using e4mc or playitgg[would probably require the user to login into the app]) this also means registering a protocol (i.e. onyx://join-game/{mc-version}/ and that'd either pop up an instance selector or choose the closest one)
 
 ## Before release
 

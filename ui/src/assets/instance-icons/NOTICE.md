@@ -14,3 +14,7 @@ mascot/logo.
 
 The background gradients in `ui/src/lib/iconCatalog.ts` come from the same
 repository (`packages/ui/src/components/base/icon-editor-modal/editor-catalog.ts`).
+
+`@512x512/` holds the same 47 images resized from the 600x600 originals to
+512x512 (Discord's minimum for rich presence art). Nothing imports that
+folder, so it isn't bundled into the app.

@@ -5,6 +5,7 @@ pub mod auth;
 pub mod cache;
 pub mod config;
 pub mod content;
+pub mod discord;
 pub mod download;
 pub mod icons;
 pub mod instance;
