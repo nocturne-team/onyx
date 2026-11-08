@@ -62,6 +62,12 @@ pub struct Game {
     pub log: VecDeque<String>,
     /// Unix seconds when Java started, for Discord's elapsed time.
     pub running_since: Option<u64>,
+    /// e4mc's public address while a LAN world is open.
+    pub share: Option<String>,
+    /// Players on the integrated server, the host included.
+    pub players: u32,
+    /// The world is open to LAN.
+    pub lan_open: bool,
 }
 
 pub type Games = Mutex<HashMap<String, Game>>;
@@ -412,6 +418,18 @@ pub async fn launch_instance(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
+    launch(&app, &state, id, None).await
+}
+
+/// [`launch_instance`], optionally joining a server (`host[:port]`) once the
+/// game has loaded.
+pub async fn launch(
+    app: &AppHandle,
+    state: &AppState,
+    id: String,
+    join: Option<String>,
+) -> Result<(), String> {
+    let app = app.clone();
     {
         let mut games = state.games.lock().unwrap();
         if games.contains_key(&id) {
@@ -432,7 +450,7 @@ pub async fn launch_instance(
         let (app, id) = (app.clone(), id.clone());
         tokio::spawn(async move {
             let state = app.state::<AppState>();
-            prepare_and_spawn(&app, &state, &id).await
+            prepare_and_spawn(&app, &state, &id, join.as_deref()).await
         })
     };
     if let Some(game) = state.games.lock().unwrap().get_mut(&id) {
@@ -502,7 +520,12 @@ fn set_stage(
     );
 }
 
-async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Result<(), String> {
+async fn prepare_and_spawn(
+    app: &AppHandle,
+    state: &AppState,
+    id: &str,
+    join: Option<&str>,
+) -> Result<(), String> {
     let root = root(state).clone();
     let mut instance = instance::load(&root, id).map_err(|e| e.to_string())?;
     let game_dir = instance::instance_dir(&root, id).map_err(|e| e.to_string())?;
@@ -679,6 +702,7 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
             .max_memory_mb
             .or(state.settings.lock().unwrap().default_memory_mb),
         launcher_version: config::VERSION,
+        join,
     };
     let mut child = launch::command(&spec)
         .spawn()
@@ -748,6 +772,7 @@ fn log_line(app: &AppHandle, id: &str, line: String) {
         }
         game.log.push_back(line.clone());
     }
+    crate::invites::watch_log_line(app, id, &line);
     let _ = app.emit(LOG_EVENT, (id, line));
 }
 

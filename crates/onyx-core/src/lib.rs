@@ -9,6 +9,7 @@ pub mod discord;
 pub mod download;
 pub mod icons;
 pub mod instance;
+pub mod invite;
 pub mod minecraft;
 pub mod modpack;
 pub mod modrinth;

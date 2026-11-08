@@ -9,6 +9,8 @@
   import Instance from "./lib/pages/Instance.svelte";
   import Project from "./lib/pages/Project.svelte";
   import CreateInstanceModal from "./lib/components/CreateInstanceModal.svelte";
+  import JoinModal from "./lib/components/JoinModal.svelte";
+  import JoinRequests from "./lib/components/JoinRequests.svelte";
   import { loadSettings, settings } from "./lib/settings/store.svelte";
   import { pageTitles } from "./lib/nav";
   import { nav } from "./lib/navigation.svelte";
@@ -17,6 +19,7 @@
   import { restoreSession } from "./lib/account.svelte";
   import { initInstances, instanceById } from "./lib/instances.svelte";
   import { loadMinecraftAccounts } from "./lib/minecraft.svelte";
+  import { initInvites, invites } from "./lib/invites.svelte";
 
   let settingsOpen = $state(false);
   let accountOpen = $state(false);
@@ -27,6 +30,7 @@
   restoreSession();
   initInstances().catch((e) => console.error("failed to load instances", e));
   loadMinecraftAccounts().catch((e) => console.error("failed to load Minecraft accounts", e));
+  initInvites();
 
   const title = $derived(
     nav.page === "instance"
@@ -92,6 +96,14 @@
 {#if createOpen}
   <CreateInstanceModal onClose={() => (createOpen = false)} />
 {/if}
+
+{#if invites.offer}
+  {#key invites.offer}
+    <JoinModal offer={invites.offer} />
+  {/key}
+{/if}
+
+<JoinRequests />
 
 {#if settingsOpen}
   <SettingsModal onClose={() => (settingsOpen = false)} />

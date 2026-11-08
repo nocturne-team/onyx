@@ -16,6 +16,8 @@ Don't forget to tick the boxes in this file!
 - [x] Discord Rich Presence
 - [ ] Total physical memory on Windows (the memory slider falls back to a 16 GB cap there)
 - [ ] Discord invites...... (either by using e4mc or playitgg[would probably require the user to login into the app]) this also means registering a protocol (i.e. onyx://join-game/{mc-version}/ and that'd either pop up an instance selector or choose the closest one)
+  - [~] e4mc + `onyx://join/...` + Discord join secrets built; hosting + Discord invite verified 2026-11-08; still needs a second player actually joining
+- [ ] playit.gg as a second tunnel (needs a playit account + their agent), for hosting from vanilla instances
 
 ## Before release
 

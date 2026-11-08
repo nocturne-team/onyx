@@ -6,6 +6,7 @@ mod commands;
 mod content;
 mod icons;
 mod instances;
+mod invites;
 mod minecraft_account;
 mod presence;
 mod prism;
@@ -22,6 +23,7 @@ use onyx_core::discord::Presence;
 use onyx_core::icons::IconCache;
 use onyx_core::minecraft::MetaDirs;
 use onyx_core::{Settings, modrinth, paths};
+use tauri::Manager;
 use tokio::sync::oneshot;
 use tracing_subscriber::EnvFilter;
 
@@ -47,6 +49,8 @@ pub struct AppState {
     /// Log of each instance's last finished run.
     pub last_logs: Mutex<HashMap<String, Vec<String>>>,
     pub presence: Presence,
+    /// An invite that arrived and wasn't picked up by the frontend yet.
+    pub pending_invite: Mutex<Option<invites::Pending>>,
 }
 
 fn main() {
@@ -65,7 +69,7 @@ fn main() {
         })
         .unwrap_or_default();
     settings.apply_download_limits();
-    let (presence, presence_task) = Presence::new(
+    let (presence, presence_task, discord_events) = Presence::new(
         onyx_core::config::DISCORD_APP_ID,
         settings.discord_rich_presence,
     );
@@ -88,6 +92,14 @@ fn main() {
     ));
 
     tauri::Builder::default()
+        // Must come first: a second launch (e.g. opening an onyx:// link)
+        // hands its link to this process and exits.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .register_asynchronous_uri_scheme_protocol("onyx-icon", icons::protocol(icons))
         .manage(AppState {
             settings: Mutex::new(settings),
@@ -101,9 +113,30 @@ fn main() {
             games: Mutex::new(HashMap::new()),
             last_logs: Mutex::new(HashMap::new()),
             presence,
+            pending_invite: Mutex::new(None),
         })
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(move |app| {
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let handle = app.handle().clone();
+            invites::register_schemes(&handle);
+            // Opened with a link (first launch).
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    invites::receive_link(&handle, url.as_str());
+                }
+            }
+            let links = handle.clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    invites::receive_link(&links, url.as_str());
+                }
+            });
+            tauri::async_runtime::spawn(invites::forward_discord_events(handle, discord_events));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::get_settings,
@@ -161,6 +194,10 @@ fn main() {
             content::install_modpack,
             content::check_pack_update,
             content::update_modpack,
+            invites::take_invite,
+            invites::join_invite,
+            invites::answer_join_request,
+            invites::game_share,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

@@ -142,6 +142,7 @@ async fn main() {
             .ok()
             .and_then(|s| s.parse().ok()),
         launcher_version: config::VERSION,
+        join: None,
     };
     let mut child = launch::command(&spec).spawn().unwrap();
     let mut out = BufReader::new(child.stdout.take().unwrap()).lines();

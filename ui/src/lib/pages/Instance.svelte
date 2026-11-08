@@ -14,6 +14,9 @@
     Tag,
     Trash2,
     TriangleAlert,
+    Users,
+    Link,
+    Copy,
   } from "@lucide/svelte";
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -26,7 +29,16 @@
   import JavaPicker from "../components/JavaPicker.svelte";
   import MemorySetting from "../components/MemorySetting.svelte";
   import { appInfo, settings } from "../settings/store.svelte";
-  import { checkPackUpdate, updateModpack, type PackUpdate } from "../content.svelte";
+  import {
+    cachedContentInfo,
+    checkPackUpdate,
+    installKey,
+    installToInstance,
+    installs,
+    updateModpack,
+    type PackUpdate,
+  } from "../content.svelte";
+  import { E4MC_PROJECT_ID, invites, loadShare } from "../invites.svelte";
   import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
   import {
     deleteInstance,
@@ -47,6 +59,26 @@
   const instance = $derived(instanceById(id));
   const game = $derived(instances.games[id]);
   const error = $derived(instances.errors[id]);
+  const share = $derived(invites.shares[id]);
+
+  // Hosting goes through e4mc, which needs a mod loader.
+  let hasE4mc = $state(false);
+  const e4mcInstall = $derived(installs[installKey(id, E4MC_PROJECT_ID)]);
+  $effect(() => {
+    if (!isTauri()) return;
+    loadShare(id).catch(() => {});
+    cachedContentInfo(id)
+      .then((known) => (hasE4mc = Object.values(known).some((k) => k.projectId === E4MC_PROJECT_ID)))
+      .catch(() => {});
+  });
+  const e4mcReady = $derived(hasE4mc || e4mcInstall === "installed");
+  let copied = $state<"link" | "address" | null>(null);
+
+  async function copy(what: "link" | "address", text: string) {
+    await navigator.clipboard.writeText(text);
+    copied = what;
+    setTimeout(() => (copied = null), 1500);
+  }
 
   let tab = $state<"content" | "logs" | "options">("content");
   let optionsError = $state<string | null>(null);
@@ -262,6 +294,18 @@
             <span class="dot"></span>
             <span><Package size={15} /> Modpack {instance.pack.versionNumber}</span>
           {/if}
+          {#if instance.loader !== "vanilla" && !instance.prismComponents && !e4mcReady}
+            <span class="dot"></span>
+            <button
+              class="support host"
+              title="Installs e4mc, which gives worlds opened to LAN a public address friends can join"
+              disabled={e4mcInstall === "installing"}
+              onclick={() => installToInstance(id, E4MC_PROJECT_ID, "mod")}
+            >
+              <Users size={14} />
+              {e4mcInstall === "installing" ? "Installing e4mc..." : "Host with friends"}
+            </button>
+          {/if}
           {#if instance.playedSecs > 0}
             <span class="dot"></span>
             <span>{playTime(instance.playedSecs)} total</span>
@@ -299,6 +343,54 @@
           </span>
         {/if}
       </div>
+    {/if}
+
+    {#if share?.address && share.link}
+      <div class="banner update">
+        <Users size={18} />
+        <span>
+          Hosting on <strong>{share.address}</strong>
+          <span class="muted">· {share.players} {share.players === 1 ? "player" : "players"}</span>
+        </span>
+        <span class="muted">Friends on Discord can also join from your profile.</span>
+        <button class="secondary" onclick={() => copy("address", share.address!)}>
+          <Copy size={15} />
+          {copied === "address" ? "Copied" : "Address"}
+        </button>
+        <button class="update-button" onclick={() => copy("link", share.link!)}>
+          <Link size={15} />
+          {copied === "link" ? "Copied" : "Copy invite link"}
+        </button>
+      </div>
+    {:else if share?.lanOpen && !hasE4mc}
+      <div class="banner">
+        <Users size={18} />
+        <span class="muted grow">
+          {e4mcInstall === "installed"
+            ? "e4mc is installed. Restart the game and open to LAN again for an invite link."
+            : "Your world is open to LAN, but only people on your network can join. Install e4mc and restart the game for an invite link that works anywhere."}
+        </span>
+        {#if instance.loader !== "vanilla" && !instance.prismComponents && !e4mcInstall}
+          <button class="update-button" onclick={() => installToInstance(id, E4MC_PROJECT_ID, "mod")}>
+            Install e4mc
+          </button>
+        {:else if e4mcInstall === "installing"}
+          <button class="update-button" disabled>Installing...</button>
+        {/if}
+      </div>
+    {:else if share?.lanOpen}
+      <div class="banner">
+        <Users size={18} />
+        <span class="muted">Waiting for e4mc's address...</span>
+      </div>
+    {:else if game?.phase === "running" && e4mcReady}
+      <div class="banner">
+        <Users size={18} />
+        <span class="muted">Open your world to LAN to get an invite link for friends.</span>
+      </div>
+    {/if}
+    {#if typeof e4mcInstall === "object"}
+      <div class="banner error"><TriangleAlert size={18} /> e4mc: {e4mcInstall.error}</div>
     {/if}
 
     {#if packUpdate && !game}
@@ -506,6 +598,21 @@
 
   .support:hover {
     color: #ff7b9c;
+  }
+
+  .grow {
+    flex: 1;
+  }
+
+  .support.host:hover {
+    color: var(--brand);
+  }
+
+  .banner .secondary,
+  .banner .update-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .meta .dot {

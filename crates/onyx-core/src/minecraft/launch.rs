@@ -30,6 +30,8 @@ pub struct LaunchSpec<'a> {
     /// Overrides Mojang's recommended heap size when set.
     pub max_memory_mb: Option<u32>,
     pub launcher_version: &'a str,
+    /// A server to join right after the game starts: `host` or `host:port`.
+    pub join: Option<&'a str>,
 }
 
 /// Version-specific setup inside the game directory. Pre-1.6 versions read
@@ -52,7 +54,14 @@ pub async fn prepare_game_dir(
 /// then game options.
 pub fn arguments(spec: &LaunchSpec) -> Vec<String> {
     let version = spec.version;
-    let env = spec.env;
+    // 1.20+ joins a server through a quick play argument that's only there
+    // with this feature on; older versions take `--server` and `--port`.
+    let quick_play = spec.join.is_some() && supports_quick_play(version);
+    let mut env = spec.env.clone();
+    if quick_play {
+        env.features.push("is_quick_play_multiplayer");
+    }
+    let env = &env;
     let vars = variables(spec);
     let substitute = |arg: &str| substitute(arg, &vars);
 
@@ -127,7 +136,24 @@ pub fn arguments(spec: &LaunchSpec) -> Vec<String> {
         (_, Some(legacy)) => args.extend(legacy.split_whitespace().map(substitute)),
         _ => {}
     }
+    if let (Some(address), false) = (spec.join, quick_play) {
+        let (host, port) = address.rsplit_once(':').unwrap_or((address, "25565"));
+        args.extend(["--server".into(), host.into(), "--port".into(), port.into()]);
+    }
     args
+}
+
+fn supports_quick_play(version: &VersionInfo) -> bool {
+    version.arguments.as_ref().is_some_and(|a| {
+        a.game.iter().any(|arg| match arg {
+            Argument::Ruled { rules, .. } => rules.iter().any(|rule| {
+                rule.features
+                    .as_ref()
+                    .is_some_and(|f| f.contains_key("is_quick_play_multiplayer"))
+            }),
+            Argument::Plain(_) => false,
+        })
+    })
 }
 
 fn jvm_or_game<'a>(
@@ -199,6 +225,10 @@ fn variables(spec: &LaunchSpec) -> HashMap<&'static str, String> {
         ("classpath", classpath(spec).join(separator)),
         ("launcher_name", "onyx".into()),
         ("launcher_version", spec.launcher_version.to_owned()),
+        (
+            "quickPlayMultiplayer",
+            spec.join.unwrap_or_default().to_owned(),
+        ),
     ])
 }
 
@@ -286,6 +316,44 @@ mod tests {
     }"#;
 
     #[test]
+    fn join_uses_quick_play_when_the_version_has_it() {
+        let quick = MODERN.replace(
+            r#""--unknown", "${not_a_variable}","#,
+            r#"{"rules": [{"action": "allow", "features": {"is_quick_play_multiplayer": true}}],
+                "value": ["--quickPlayMultiplayer", "${quickPlayMultiplayer}"]},"#,
+        );
+        let meta = MetaDirs::new("/m");
+        let env = env();
+        let account = account();
+        let args_for = |json: &str, join| {
+            let version: VersionInfo = serde_json::from_str(json).unwrap();
+            arguments(&LaunchSpec {
+                meta: &meta,
+                version: &version,
+                env: &env,
+                java: "/java".into(),
+                game_dir: "/game".into(),
+                account: &account,
+                client_id: "cid",
+                max_memory_mb: None,
+                launcher_version: "0.1.0",
+                join,
+            })
+        };
+        let tail = |args: Vec<String>, n: usize| args[args.len() - n..].to_vec();
+
+        assert_eq!(
+            tail(args_for(&quick, Some("a.e4mc.link")), 2),
+            ["--quickPlayMultiplayer", "a.e4mc.link"]
+        );
+        assert!(!args_for(&quick, None).contains(&"--quickPlayMultiplayer".to_owned()));
+        assert_eq!(
+            tail(args_for(MODERN, Some("a.e4mc.link:25566")), 4),
+            ["--server", "a.e4mc.link", "--port", "25566"]
+        );
+    }
+
+    #[test]
     fn modern_arguments() {
         let version: VersionInfo = serde_json::from_str(MODERN).unwrap();
         let meta = MetaDirs::new("/m");
@@ -301,6 +369,7 @@ mod tests {
             client_id: "cid",
             max_memory_mb: None,
             launcher_version: "0.1.0",
+            join: None,
         };
         let args = unix_paths(arguments(&spec));
         assert_eq!(
@@ -359,6 +428,7 @@ mod tests {
             client_id: "cid",
             max_memory_mb: None,
             launcher_version: "0.1.0",
+            join: None,
         };
         let args = unix_paths(arguments(&spec));
         assert_eq!(

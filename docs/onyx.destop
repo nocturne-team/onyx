@@ -10,4 +10,4 @@ Icon=xyz.kkaii.Onyx
 Categories=Game;ActionGame;AdventureGame;Simulation;
 Keywords=game;minecraft;mc;modpack;mods;
 StartupWMClass=Onyx
-MimeType=application/x-modrinth-modpack+zip;x-scheme-handler/curseforge;
+MimeType=application/x-modrinth-modpack+zip;x-scheme-handler/curseforge;x-scheme-handler/onyx;

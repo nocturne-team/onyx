@@ -1,5 +1,6 @@
 //! Keeps Discord rich presence in line with the running instances: the most
-//! recently started one is shown, nothing when no game is running.
+//! recently started one is shown, nothing when no game is running. While it
+//! hosts a LAN world through e4mc, friends get a Join button.
 
 use onyx_core::cache::CachePolicy;
 use onyx_core::discord::{self, Activity, Assets, Timestamps};
@@ -21,10 +22,10 @@ pub fn refresh(app: &AppHandle) {
             state.presence.set_activity(None);
             return;
         };
-        let activity = match instance::load(&state.paths.instances, &current.0) {
-            Ok(instance) => Some(activity(&state, &instance, current.1).await),
+        let activity = match instance::load(&state.paths.instances, &current.id) {
+            Ok(instance) => Some(activity(&state, &instance, &current).await),
             Err(e) => {
-                tracing::warn!("rich presence: could not load instance {}: {e}", current.0);
+                tracing::warn!("rich presence: could not load instance {}: {e}", current.id);
                 None
             }
         };
@@ -36,19 +37,34 @@ pub fn refresh(app: &AppHandle) {
     });
 }
 
-/// The running game that started last: its id and start time.
-fn current_game(state: &AppState) -> Option<(String, u64)> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Current {
+    id: String,
+    since: u64,
+    share: Option<String>,
+    players: u32,
+}
+
+/// The running game that started last.
+fn current_game(state: &AppState) -> Option<Current> {
     state
         .games
         .lock()
         .unwrap()
         .iter()
         .filter(|(_, game)| game.phase == Some(Phase::Running))
-        .filter_map(|(id, game)| Some((id.clone(), game.running_since?)))
-        .max_by_key(|(_, since)| *since)
+        .filter_map(|(id, game)| {
+            Some(Current {
+                id: id.clone(),
+                since: game.running_since?,
+                share: game.share.clone(),
+                players: game.players,
+            })
+        })
+        .max_by_key(|current| current.since)
 }
 
-async fn activity(state: &AppState, instance: &Instance, since: u64) -> Activity {
+async fn activity(state: &AppState, instance: &Instance, current: &Current) -> Activity {
     let (large_image, large_text) = large_image(state, instance).await;
     let (small_image, small_text) = match loader_asset(instance.loader) {
         Some(key) => (
@@ -62,6 +78,14 @@ async fn activity(state: &AppState, instance: &Instance, since: u64) -> Activity
         None if large_image != APP_ICON => (Some(APP_ICON.to_owned()), Some("Onyx".to_owned())),
         None => (None, None),
     };
+    let (party, secrets) = match &current.share {
+        Some(address) => {
+            let (party, secrets) =
+                crate::invites::discord_party(instance, address, current.players);
+            (Some(party), Some(secrets))
+        }
+        None => (None, None),
+    };
     Activity {
         details: Some(discord::text(&instance.name)),
         state: Some(discord::text(&format!(
@@ -69,13 +93,17 @@ async fn activity(state: &AppState, instance: &Instance, since: u64) -> Activity
             loader_name(instance.loader),
             instance.game_version
         ))),
-        timestamps: Some(Timestamps { start: since }),
+        timestamps: Some(Timestamps {
+            start: current.since,
+        }),
         assets: Some(Assets {
             large_image: Some(large_image),
             large_text: Some(discord::text(&large_text)),
             small_image,
             small_text,
         }),
+        party,
+        secrets,
     }
 }
 
