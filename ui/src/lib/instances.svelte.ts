@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { IconConfig } from "./iconCatalog";
 
 /** Mirrors `onyx_core::instance::Instance`. */
 export interface Instance {
@@ -15,7 +16,7 @@ export interface Instance {
   maxMemoryMb: number | null;
   /** File name of a custom icon; `null` means a generated one. */
   icon: string | null;
-  iconSeed: number | null;
+  iconConfig: IconConfig | null;
 }
 
 export interface Progress {
@@ -97,7 +98,7 @@ export async function createInstance(
   gameVersion: string,
   loader: Instance["loader"],
   loaderVersion: string | null,
-  iconSeed: number | null,
+  iconConfig: IconConfig | null,
   iconPath: string | null,
 ): Promise<Instance> {
   const instance = await invoke<Instance>("create_instance", {
@@ -105,7 +106,7 @@ export async function createInstance(
     gameVersion,
     loader,
     loaderVersion,
-    iconSeed,
+    iconConfig,
     iconPath,
   });
   await loadInstances();
@@ -219,7 +220,7 @@ export async function setInstanceIcon(id: string, path: string) {
   await loadInstances();
 }
 
-export async function randomizeInstanceIcon(id: string, seed: number) {
-  await invoke("randomize_instance_icon", { id, seed });
+export async function setInstanceIconConfig(id: string, config: IconConfig) {
+  await invoke("set_instance_icon_config", { id, config });
   await loadInstances();
 }

@@ -43,10 +43,25 @@ pub struct Instance {
     /// the name changes on every upload so the UI never shows a stale one).
     #[serde(default)]
     pub icon: Option<String>,
-    /// Seed for the generated icon shown when there's no custom one. `None`
-    /// means "derive it from the id".
+    /// Background + symbol for the built-in icons, used when there's no
+    /// custom image. `None` means "pick one from the id".
     #[serde(default)]
-    pub icon_seed: Option<u32>,
+    pub icon_config: Option<IconConfig>,
+}
+
+/// A built-in icon: ids from the UI's icon catalog (`ui/src/lib/iconCatalog.ts`).
+/// The backend only stores them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IconConfig {
+    pub background: String,
+    pub symbol: String,
+}
+
+impl IconConfig {
+    fn is_reasonable(&self) -> bool {
+        let ok = |s: &str| !s.is_empty() && s.len() <= 64;
+        ok(&self.background) && ok(&self.symbol)
+    }
 }
 
 /// Image types accepted as instance icons.
@@ -134,7 +149,7 @@ pub struct NewInstance {
     pub game_version: String,
     pub loader: Loader,
     pub loader_version: Option<String>,
-    pub icon_seed: Option<u32>,
+    pub icon_config: Option<IconConfig>,
 }
 
 /// Creates the folder and `instance.json`. The game itself is installed on
@@ -156,7 +171,7 @@ pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> 
         played_secs: 0,
         max_memory_mb: None,
         icon: None,
-        icon_seed: new.icon_seed,
+        icon_config: new.icon_config.filter(IconConfig::is_reasonable),
     };
     save(root, &instance)?;
     Ok(instance)
@@ -198,12 +213,19 @@ pub fn set_icon(
     Ok(instance)
 }
 
-/// Drops the custom icon and switches to a generated one with `seed`.
-pub fn set_icon_seed(root: &Path, id: &str, seed: u32) -> Result<Instance, InstanceError> {
+/// Drops the custom image and switches to a built-in icon.
+pub fn set_icon_config(
+    root: &Path,
+    id: &str,
+    config: IconConfig,
+) -> Result<Instance, InstanceError> {
+    if !config.is_reasonable() {
+        return Err(InstanceError::BadIcon);
+    }
     let mut instance = load(root, id)?;
     let old = icon_path(root, &instance);
     instance.icon = None;
-    instance.icon_seed = Some(seed);
+    instance.icon_config = Some(config);
     save(root, &instance)?;
     if let Some(old) = old {
         let _ = std::fs::remove_file(old);
@@ -305,7 +327,7 @@ mod tests {
             game_version: "26.3".into(),
             loader: Loader::Vanilla,
             loader_version: None,
-            icon_seed: None,
+            icon_config: None,
         }
     }
 
@@ -363,8 +385,15 @@ mod tests {
             set_icon(dir.path(), &instance.id, b"x", "exe"),
             Err(InstanceError::BadIcon)
         ));
-        let seeded = set_icon_seed(dir.path(), &instance.id, 7).unwrap();
-        assert_eq!((seeded.icon.clone(), seeded.icon_seed), (None, Some(7)));
+        let config = IconConfig {
+            background: "blue".into(),
+            symbol: "chest".into(),
+        };
+        let seeded = set_icon_config(dir.path(), &instance.id, config.clone()).unwrap();
+        assert_eq!(
+            (seeded.icon.clone(), seeded.icon_config.clone()),
+            (None, Some(config))
+        );
         assert_eq!(std::fs::read_dir(dir.path().join("a")).unwrap().count(), 1);
 
         let mut tampered = seeded;

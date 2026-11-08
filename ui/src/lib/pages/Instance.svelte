@@ -4,6 +4,7 @@
     FolderOpen,
     Gamepad2,
     ImageUp,
+    Palette,
     RefreshCw,
     Inbox,
     ScrollText,
@@ -18,15 +19,16 @@
   import ModList from "../components/ModList.svelte";
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
-  import { randomSeed } from "../blockIcon";
+  import IconEditor from "../components/IconEditor.svelte";
+  import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
   import {
     deleteInstance,
     instanceById,
     instances,
     loaderNames,
     pickIconFile,
-    randomizeInstanceIcon,
     setInstanceIcon,
+    setInstanceIconConfig,
   } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
 
@@ -53,10 +55,13 @@
     }
   }
 
-  async function randomizeIcon() {
+  let editingIcon = $state(false);
+
+  async function saveIconConfig(config: IconConfig) {
     iconMenu = false;
+    editingIcon = false;
     try {
-      await randomizeInstanceIcon(id, randomSeed());
+      await setInstanceIconConfig(id, config);
       iconError = null;
     } catch (e) {
       iconError = String(e);
@@ -145,7 +150,15 @@
           <div class="menu-backdrop" onclick={() => (iconMenu = false)}></div>
           <div class="icon-menu">
             <button onclick={uploadIcon}><ImageUp size={16} /> Upload image</button>
-            <button onclick={randomizeIcon}><RefreshCw size={16} /> Randomize</button>
+            <button
+              onclick={() => {
+                iconMenu = false;
+                editingIcon = true;
+              }}><Palette size={16} /> Customize</button
+            >
+            <button onclick={() => saveIconConfig(randomIconConfig())}>
+              <RefreshCw size={16} /> Randomize
+            </button>
           </div>
         {/if}
       </div>
@@ -243,6 +256,14 @@
       <pre class="log" bind:this={logEl} onscroll={onScroll}></pre>
     {/if}
   </div>
+{/if}
+
+{#if editingIcon && instance}
+  <IconEditor
+    initial={instance.iconConfig ?? defaultIconConfig(instance.id)}
+    onClose={() => (editingIcon = false)}
+    onSave={saveIconConfig}
+  />
 {/if}
 
 <style>

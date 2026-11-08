@@ -1,20 +1,20 @@
 <script lang="ts">
-  import { blockPixels, seedFromString } from "../blockIcon";
+  import { backgroundCss, defaultIconConfig, symbolUrl, type IconConfig } from "../iconCatalog";
   import { customIconUrl, type Instance } from "../instances.svelte";
 
   interface Props {
     instance?: Instance;
-    /** Previews in the create form: a seed or an image, without an instance. */
-    seed?: number;
+    /** Previews (create form, icon editor): a built-in icon or an image, without an instance. */
+    config?: IconConfig;
     src?: string | null;
     size?: number;
   }
 
-  let { instance, seed, src, size = 48 }: Props = $props();
+  let { instance, config, src, size = 48 }: Props = $props();
 
   const custom = $derived(src ?? (instance ? customIconUrl(instance) : null));
-  const pixels = $derived(
-    blockPixels(seed ?? instance?.iconSeed ?? seedFromString(instance?.id ?? "")),
+  const builtIn = $derived(
+    config ?? instance?.iconConfig ?? defaultIconConfig(instance?.id ?? ""),
   );
 </script>
 
@@ -24,11 +24,11 @@
   {:else if instance?.icon && custom === undefined}
     <!-- Custom icon still loading; keep the space. -->
   {:else}
-    <svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true">
-      {#each pixels as fill, i (i)}
-        <rect x={i % 8} y={Math.floor(i / 8)} width="1" height="1" {fill} />
-      {/each}
-    </svg>
+    <span class="built-in" style:background-image={backgroundCss(builtIn.background)}>
+      {#if symbolUrl(builtIn.symbol)}
+        <img src={symbolUrl(builtIn.symbol)} alt="" draggable="false" />
+      {/if}
+    </span>
   {/if}
 </span>
 
@@ -43,14 +43,17 @@
     background: var(--bg-button);
   }
 
-  img,
-  svg {
+  .built-in {
+    display: block;
     width: 100%;
     height: 100%;
-    display: block;
   }
 
   img {
+    width: 100%;
+    height: 100%;
+    display: block;
     object-fit: cover;
+    user-select: none;
   }
 </style>

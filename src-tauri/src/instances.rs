@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use onyx_core::auth::now_secs;
 use onyx_core::config;
 use onyx_core::download::{Progress, ProgressSnapshot};
-use onyx_core::instance::{self, Instance, Loader, NewInstance};
+use onyx_core::instance::{self, IconConfig, Instance, Loader, NewInstance};
 use onyx_core::minecraft::forge::{self, ForgeLoader};
 use onyx_core::minecraft::launch::{self, LaunchAccount, LaunchSpec};
 use onyx_core::minecraft::loader::{self, LoaderVersion, MetaLoader};
@@ -79,7 +79,7 @@ pub fn create_instance(
     game_version: String,
     loader: Loader,
     loader_version: Option<String>,
-    icon_seed: Option<u32>,
+    icon_config: Option<IconConfig>,
     icon_path: Option<PathBuf>,
 ) -> Result<Instance, String> {
     if (loader != Loader::Vanilla) != loader_version.is_some() {
@@ -92,7 +92,7 @@ pub fn create_instance(
             game_version,
             loader,
             loader_version,
-            icon_seed,
+            icon_config,
         },
     )
     .map_err(|e| e.to_string())?;
@@ -131,14 +131,14 @@ pub fn set_instance_icon(
     set_icon_from_file(&state, &id, &path)
 }
 
-/// Switches to a generated icon with this seed, dropping any custom icon.
+/// Switches to a built-in icon, dropping any custom image.
 #[tauri::command]
-pub fn randomize_instance_icon(
+pub fn set_instance_icon_config(
     state: State<'_, AppState>,
     id: String,
-    seed: u32,
+    config: IconConfig,
 ) -> Result<Instance, String> {
-    instance::set_icon_seed(root(&state), &id, seed).map_err(|e| e.to_string())
+    instance::set_icon_config(root(&state), &id, config).map_err(|e| e.to_string())
 }
 
 /// Preview of an image the user picked, before it's saved anywhere.

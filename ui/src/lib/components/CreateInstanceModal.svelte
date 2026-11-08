@@ -6,6 +6,7 @@
     Compass,
     PackageOpen,
     Plus,
+    Palette,
     RefreshCw,
     Search,
     Upload,
@@ -25,7 +26,8 @@
   } from "../instances.svelte";
   import { nav, openInstance } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browse.svelte";
-  import { randomSeed } from "../blockIcon";
+  import { randomIconConfig, type IconConfig } from "../iconCatalog";
+  import IconEditor from "./IconEditor.svelte";
   import InstanceIcon from "./InstanceIcon.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
@@ -43,7 +45,8 @@
   let otherVersion = $state<string | null>(null);
   let loaderError = $state<string | null>(null);
   let creating = $state(false);
-  let iconSeed = $state(randomSeed());
+  let iconConfig = $state<IconConfig>(randomIconConfig());
+  let editingIcon = $state(false);
   let iconPath = $state<string | null>(null);
   let iconPreview = $state<string | null>(null);
 
@@ -62,7 +65,7 @@
   function randomizeIcon() {
     iconPath = null;
     iconPreview = null;
-    iconSeed = randomSeed();
+    iconConfig = randomIconConfig();
   }
   let error = $state<string | null>(null);
 
@@ -173,7 +176,7 @@
         gameVersion,
         loader,
         chosenLoaderVersion,
-        iconPath ? null : iconSeed,
+        iconPath ? null : iconConfig,
         iconPath,
       );
       openInstance(instance.id);
@@ -186,7 +189,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onClose()} />
+<svelte:window onkeydown={(e) => e.key === "Escape" && !editingIcon && onClose()} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onClose}>
@@ -251,10 +254,11 @@
     {:else}
       <div class="body">
         <div class="icon-row">
-          <InstanceIcon seed={iconSeed} src={iconPreview} size={112} />
+          <InstanceIcon config={iconConfig} src={iconPreview} size={112} />
           <div class="icon-buttons">
             <button class="secondary" onclick={uploadIcon}><Upload size={16} /> Upload</button>
             <button class="secondary" onclick={randomizeIcon}><RefreshCw size={16} /> Randomize</button>
+            <button class="secondary" onclick={() => (editingIcon = true)}><Palette size={16} /> Customize</button>
           </div>
         </div>
 
@@ -341,6 +345,19 @@
     {/if}
   </div>
 </div>
+
+{#if editingIcon}
+  <IconEditor
+    initial={iconConfig}
+    onClose={() => (editingIcon = false)}
+    onSave={(config) => {
+      iconConfig = config;
+      iconPath = null;
+      iconPreview = null;
+      editingIcon = false;
+    }}
+  />
+{/if}
 
 <style>
   .backdrop {

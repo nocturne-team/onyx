@@ -210,7 +210,7 @@ fn start_pack_install(
             game_version: target.game_version,
             loader: target.loader,
             loader_version: target.loader_version,
-            icon_seed: None,
+            icon_config: None,
         },
     )
     .map_err(|e| e.to_string())?;
