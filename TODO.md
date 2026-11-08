@@ -21,7 +21,7 @@ Don't forget to tick the boxes in this file!
 
 - [ ] Signed releases 
 - [ ] Github actions best practises (i.e. dependabot / codeql etc) + release
-- [ ] Own Microsoft Entra app + Minecraft API approval (https://aka.ms/mce-reviewappid); the Prism client ID is dev-only and release builds refuse it
+- [ ] Minecraft API approval for our Entra app `840c56e1-7b82-4764-b514-d2be40c466c5` (https://aka.ms/mce-reviewappid), then switch `ONYX_MSA_CLIENT_ID` to it; the Prism client ID is dev-only and release builds refuse it
 - [ ] Bump `rust-version` if newer deps need it (keyring 4, zip 7.4 want 1.88+)
 - [ ] Exe icon on windows, .desktop entry on linux
 - [ ] Arch Linux Pacman package
