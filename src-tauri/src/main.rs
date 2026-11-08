@@ -1,0 +1,125 @@
+// Hide the console window on Windows release builds.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod account;
+mod commands;
+mod content;
+mod instances;
+mod minecraft_account;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use account::Session;
+use onyx_core::auth::Accounts;
+use onyx_core::auth::microsoft::MinecraftSession;
+use onyx_core::cache::ResponseCache;
+use onyx_core::minecraft::MetaDirs;
+use onyx_core::{Settings, modrinth, paths};
+use tokio::sync::oneshot;
+use tracing_subscriber::EnvFilter;
+
+pub struct Paths {
+    pub meta: MetaDirs,
+    pub instances: PathBuf,
+    pub accounts: PathBuf,
+}
+
+pub struct AppState {
+    pub settings: Mutex<Settings>,
+    pub paths: Paths,
+    pub modrinth: modrinth::Client,
+    pub session: Mutex<Option<Session>>,
+    /// Cancels the Modrinth login that's waiting for its browser redirect.
+    pub login_cancel: Mutex<Option<oneshot::Sender<()>>>,
+    pub accounts: Mutex<Accounts>,
+    /// Live Minecraft tokens by account ID. Never written to disk.
+    pub minecraft_sessions: Mutex<HashMap<String, MinecraftSession>>,
+    pub minecraft_login_cancel: Mutex<Option<oneshot::Sender<()>>>,
+    /// Instances that are preparing or running.
+    pub games: instances::Games,
+    /// Log of each instance's last finished run.
+    pub last_logs: Mutex<HashMap<String, Vec<String>>>,
+}
+
+fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
+
+    let settings = paths::settings_file()
+        .map(|path| {
+            Settings::load(&path).unwrap_or_else(|e| {
+                tracing::warn!("using default settings: {e}");
+                Settings::default()
+            })
+        })
+        .unwrap_or_default();
+
+    let data_dir = paths::data_dir().expect("no home directory to keep Onyx's data in");
+    let paths = Paths {
+        meta: MetaDirs::new(paths::meta_dir().expect("data dir exists")),
+        instances: data_dir.join("instances"),
+        accounts: data_dir.join("accounts.json"),
+    };
+    let accounts = Accounts::load(&paths.accounts);
+
+    tauri::Builder::default()
+        .manage(AppState {
+            settings: Mutex::new(settings),
+            paths,
+            modrinth: modrinth::Client::new(ResponseCache::new(
+                paths::cache_dir().map(|dir| dir.join("api")),
+            )),
+            session: Mutex::new(None),
+            login_cancel: Mutex::new(None),
+            accounts: Mutex::new(accounts),
+            minecraft_sessions: Mutex::new(HashMap::new()),
+            minecraft_login_cancel: Mutex::new(None),
+            games: Mutex::new(HashMap::new()),
+            last_logs: Mutex::new(HashMap::new()),
+        })
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::get_settings,
+            commands::set_settings,
+            commands::search,
+            account::restore_session,
+            account::login_modrinth,
+            account::cancel_login,
+            account::login_with_token,
+            account::logout,
+            account::my_projects,
+            minecraft_account::minecraft_accounts,
+            minecraft_account::login_minecraft,
+            minecraft_account::cancel_minecraft_login,
+            minecraft_account::set_active_minecraft_account,
+            minecraft_account::remove_minecraft_account,
+            instances::list_instances,
+            instances::create_instance,
+            instances::loader_game_versions,
+            instances::loader_versions,
+            instances::list_mods,
+            instances::set_mod_enabled,
+            instances::remove_mod,
+            instances::open_instance_subfolder,
+            instances::delete_instance,
+            instances::open_instance_folder,
+            instances::game_versions,
+            instances::running_games,
+            instances::game_log,
+            instances::stop_game,
+            instances::launch_instance,
+            content::install_to_instance,
+            content::identify_content,
+            content::import_mrpack,
+            content::install_modpack,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Onyx");
+}

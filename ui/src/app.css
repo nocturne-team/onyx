@@ -1,0 +1,149 @@
+/* Theme tokens. Selectors are attribute-based, not :root-only, so the theme
+   previews in Settings can render any theme inside a single element. */
+[data-theme="dark"] {
+  --bg-shell: #16181c;
+  --bg: #1a1c20;
+  --bg-raised: #26292f;
+  --bg-button: #33363d;
+  --bg-button-hover: #3d4048;
+  --text: #b0bac5;
+  --text-strong: #ecf9fb;
+  --text-muted: #8a95a3;
+  --border: #2c2f35;
+  --brand: #1bd96a;
+  --brand-bg: #1b8a4a;
+  --brand-text: #ffffff;
+  --brand-highlight: rgb(27 217 106 / 0.15);
+  --overlay: rgb(0 0 0 / 0.55);
+  --chip-bg: rgb(22 24 28 / 0.85);
+  --skeleton: #2e3138;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg-shell: #e5e7eb;
+  --bg: #eef0f3;
+  --bg-raised: #ffffff;
+  --bg-button: #e3e5e9;
+  --bg-button-hover: #d6d9de;
+  --text: #2c2e31;
+  --text-strong: #1a202c;
+  --text-muted: #5f6873;
+  --border: #d4d7dc;
+  --brand: #00af5c;
+  --brand-bg: #00af5c;
+  --brand-text: #ffffff;
+  --brand-highlight: rgb(0 175 92 / 0.15);
+  --overlay: rgb(0 0 0 / 0.35);
+  --chip-bg: rgb(255 255 255 / 0.9);
+  --skeleton: #e1e4e8;
+  color-scheme: light;
+}
+
+[data-theme="oled"] {
+  --bg-shell: #000000;
+  --bg: #050506;
+  --bg-raised: #101013;
+  --bg-button: #1c1c21;
+  --bg-button-hover: #26262c;
+  --text: #b0bac5;
+  --text-strong: #ecf9fb;
+  --text-muted: #7d8794;
+  --border: #18181c;
+  --brand: #1bd96a;
+  --brand-bg: #1b8a4a;
+  --brand-text: #ffffff;
+  --brand-highlight: rgb(27 217 106 / 0.15);
+  --overlay: rgb(0 0 0 / 0.7);
+  --chip-bg: rgb(0 0 0 / 0.85);
+  --skeleton: #1a1a1e;
+  color-scheme: dark;
+}
+
+:root {
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --rail-width: 72px;
+  --titlebar-height: 52px;
+  --blur: blur(12px);
+  font-family: "Inter Variable", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* "Advanced rendering" off: no blur anywhere. */
+:root[data-advanced="false"] {
+  --blur: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-shell);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-strong);
+  margin: 0;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-button);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Spinning loader icons (`<LoaderCircle class="spin" />`). */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

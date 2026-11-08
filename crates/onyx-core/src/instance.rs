@@ -1,0 +1,258 @@
+//! Instances: one folder per instance under `<data dir>/instances/`, holding an
+//! `instance.json` and the game directory contents (saves, mods, options...).
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::auth::now_secs;
+
+pub const INSTANCE_FILE: &str = "instance.json";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Loader {
+    Vanilla,
+    Fabric,
+    Quilt,
+    Forge,
+    NeoForge,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Instance {
+    /// Folder name, unique among instances. Not shown to the user.
+    #[serde(skip_deserializing)]
+    pub id: String,
+    pub name: String,
+    pub game_version: String,
+    pub loader: Loader,
+    #[serde(default)]
+    pub loader_version: Option<String>,
+    /// Unix seconds.
+    pub created: u64,
+    #[serde(default)]
+    pub last_played: Option<u64>,
+    /// Total seconds the game has been running.
+    #[serde(default)]
+    pub played_secs: u64,
+    #[serde(default)]
+    pub max_memory_mb: Option<u32>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum InstanceError {
+    #[error("{}: {source}", path.display())]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("{} is not a valid instance file: {source}", path.display())]
+    Invalid {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("give the instance a name")]
+    EmptyName,
+    #[error("no instance called {0}")]
+    NotFound(String),
+}
+
+fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> InstanceError + '_ {
+    move |source| InstanceError::Io {
+        path: path.to_owned(),
+        source,
+    }
+}
+
+/// All instances, most recently played (or created) first. Folders without a
+/// readable `instance.json` are skipped with a warning.
+pub fn list(root: &Path) -> Result<Vec<Instance>, InstanceError> {
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(io_err(root)(e)),
+    };
+    let mut instances: Vec<Instance> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join(INSTANCE_FILE).is_file())
+        .filter_map(|entry| {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            load(root, &id)
+                .inspect_err(|e| tracing::warn!("skipping instance {id}: {e}"))
+                .ok()
+        })
+        .collect();
+    instances.sort_by_key(|i| std::cmp::Reverse(i.last_played.unwrap_or(i.created)));
+    Ok(instances)
+}
+
+pub fn load(root: &Path, id: &str) -> Result<Instance, InstanceError> {
+    let path = root.join(id).join(INSTANCE_FILE);
+    let bytes = std::fs::read(&path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => InstanceError::NotFound(id.to_owned()),
+        _ => io_err(&path)(e),
+    })?;
+    let mut instance: Instance =
+        serde_json::from_slice(&bytes).map_err(|source| InstanceError::Invalid {
+            path: path.clone(),
+            source,
+        })?;
+    instance.id = id.to_owned();
+    Ok(instance)
+}
+
+pub fn save(root: &Path, instance: &Instance) -> Result<(), InstanceError> {
+    let dir = root.join(&instance.id);
+    std::fs::create_dir_all(&dir).map_err(io_err(&dir))?;
+    let path = dir.join(INSTANCE_FILE);
+    let temp = dir.join(format!("{INSTANCE_FILE}.onyx-part"));
+    let json = serde_json::to_vec_pretty(instance).expect("instance always serializes");
+    std::fs::write(&temp, json).map_err(io_err(&temp))?;
+    std::fs::rename(&temp, &path).map_err(io_err(&path))
+}
+
+pub struct NewInstance {
+    pub name: String,
+    pub game_version: String,
+    pub loader: Loader,
+    pub loader_version: Option<String>,
+}
+
+/// Creates the folder and `instance.json`. The game itself is installed on
+/// first launch.
+pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> {
+    let name = new.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(InstanceError::EmptyName);
+    }
+    let id = unique_id(root, &name);
+    let instance = Instance {
+        id,
+        name,
+        game_version: new.game_version,
+        loader: new.loader,
+        loader_version: new.loader_version,
+        created: now_secs(),
+        last_played: None,
+        played_secs: 0,
+        max_memory_mb: None,
+    };
+    save(root, &instance)?;
+    Ok(instance)
+}
+
+pub fn delete(root: &Path, id: &str) -> Result<(), InstanceError> {
+    let dir = instance_dir(root, id)?;
+    std::fs::remove_dir_all(&dir).map_err(io_err(&dir))
+}
+
+/// The instance's folder, which is also its game directory. Rejects ids that
+/// would point outside `root`.
+pub fn instance_dir(root: &Path, id: &str) -> Result<PathBuf, InstanceError> {
+    if id.is_empty() || id != folder_name(id) || id == "." || id == ".." {
+        return Err(InstanceError::NotFound(id.to_owned()));
+    }
+    let dir = root.join(id);
+    if !dir.join(INSTANCE_FILE).is_file() {
+        return Err(InstanceError::NotFound(id.to_owned()));
+    }
+    Ok(dir)
+}
+
+/// A folder name safe on Windows and Linux.
+fn folder_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    // Windows rejects trailing dots and spaces.
+    cleaned.trim_end_matches(['.', ' ']).trim_start().to_owned()
+}
+
+fn unique_id(root: &Path, name: &str) -> String {
+    let mut base = folder_name(name);
+    if base.is_empty() || base.starts_with('.') {
+        base = format!("instance{base}");
+    }
+    const RESERVED: &[&str] = &["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"];
+    if RESERVED.contains(&base.to_ascii_uppercase().as_str()) {
+        base.push('_');
+    }
+    let mut id = base.clone();
+    let mut n = 2;
+    while root.join(&id).exists() {
+        id = format!("{base} ({n})");
+        n += 1;
+    }
+    id
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn new(name: &str) -> NewInstance {
+        NewInstance {
+            name: name.into(),
+            game_version: "26.3".into(),
+            loader: Loader::Vanilla,
+            loader_version: None,
+        }
+    }
+
+    #[test]
+    fn create_list_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = create(dir.path(), new("Vanilla 26.3")).unwrap();
+        let b = create(dir.path(), new("Vanilla 26.3")).unwrap();
+        assert_eq!(a.id, "Vanilla 26.3");
+        assert_eq!(b.id, "Vanilla 26.3 (2)");
+        assert_eq!(b.name, "Vanilla 26.3");
+
+        let mut listed = list(dir.path()).unwrap();
+        assert_eq!(listed.len(), 2);
+        listed.sort_by(|x, y| x.id.cmp(&y.id));
+        assert_eq!(listed[0], a);
+
+        delete(dir.path(), &a.id).unwrap();
+        assert_eq!(list(dir.path()).unwrap(), vec![b]);
+    }
+
+    #[test]
+    fn unsafe_names_become_safe_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(create(dir.path(), new("a/b:c?")).unwrap().id, "a_b_c_");
+        assert_eq!(create(dir.path(), new("..")).unwrap().id, "instance");
+        assert_eq!(create(dir.path(), new("con")).unwrap().id, "con_");
+        assert!(matches!(
+            create(dir.path(), new("  ")),
+            Err(InstanceError::EmptyName)
+        ));
+    }
+
+    #[test]
+    fn ids_cannot_escape_the_root() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(instance_dir(dir.path(), "../x").is_err());
+        assert!(instance_dir(dir.path(), "..").is_err());
+        assert!(instance_dir(dir.path(), "").is_err());
+    }
+
+    #[test]
+    fn played_instances_sort_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut old = create(dir.path(), new("old")).unwrap();
+        create(dir.path(), new("new")).unwrap();
+        old.last_played = Some(now_secs() + 10);
+        save(dir.path(), &old).unwrap();
+        assert_eq!(list(dir.path()).unwrap()[0].id, "old");
+    }
+}
