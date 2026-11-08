@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Onyx
+Comment=Discover, manage, and play Minecraft instances
+Type=Application
+Terminal=false
+Exec=onyx %U
+StartupNotify=true
+Icon=xyz.kkaii.Onyx
+Categories=Game;ActionGame;AdventureGame;Simulation;
+Keywords=game;minecraft;mc;modpack;mods;
+StartupWMClass=Onyx
+MimeType=application/x-modrinth-modpack+zip;x-scheme-handler/curseforge;

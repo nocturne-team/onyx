@@ -17,6 +17,7 @@ use crate::config;
 
 const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 const XBL_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MINECRAFT_URL: &str = "https://api.minecraftservices.com";
@@ -28,6 +29,7 @@ pub struct MsaConfig {
     pub client_id: String,
     pub authorize_url: String,
     pub token_url: String,
+    pub device_code_url: String,
     pub xbl_url: String,
     pub xsts_url: String,
     /// Base of `/authentication/login_with_xbox` and `/minecraft/profile`.
@@ -42,6 +44,7 @@ impl MsaConfig {
             client_id: config::MSA_CLIENT_ID?.to_owned(),
             authorize_url: AUTHORIZE_URL.to_owned(),
             token_url: TOKEN_URL.to_owned(),
+            device_code_url: DEVICE_CODE_URL.to_owned(),
             xbl_url: XBL_URL.to_owned(),
             xsts_url: XSTS_URL.to_owned(),
             minecraft_url: MINECRAFT_URL.to_owned(),
@@ -218,6 +221,104 @@ pub async fn login(
         ],
     )
     .await?;
+    minecraft_session(config, http, token).await
+}
+
+/// The code the user types at `verification_uri` in the device code flow.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all(serialize = "camelCase"))]
+pub struct DeviceCode {
+    pub user_code: String,
+    pub verification_uri: String,
+    /// Secret; only sent back to Microsoft while polling.
+    #[serde(skip_serializing)]
+    pub device_code: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+/// Starts the device code flow: the user signs in on any device by entering
+/// `user_code` at `verification_uri`. Then call [`finish_device_login`].
+pub async fn start_device_login(
+    config: &MsaConfig,
+    http: &reqwest::Client,
+) -> Result<DeviceCode, MsaError> {
+    let response = http
+        .post(&config.device_code_url)
+        .form(&[("client_id", config.client_id.as_str()), ("scope", SCOPES)])
+        .send()
+        .await
+        .map_err(|source| MsaError::Http {
+            service: "Microsoft",
+            source,
+        })?;
+    read_json(response, "Microsoft").await
+}
+
+/// Polls until the user finishes signing in (or the code expires, or
+/// `cancel` completes), then signs in to Minecraft.
+pub async fn finish_device_login(
+    config: &MsaConfig,
+    http: &reqwest::Client,
+    code: &DeviceCode,
+    cancel: impl Future<Output = ()>,
+) -> Result<MinecraftSession, MsaError> {
+    let poll = async {
+        let mut interval = code.interval.max(1);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(code.expires_in);
+        loop {
+            tokio::time::sleep(Duration::from_secs(interval)).await;
+            if tokio::time::Instant::now() >= deadline {
+                return Err(MsaError::Login(AuthError::TimedOut));
+            }
+            let response = http
+                .post(&config.token_url)
+                .form(&[
+                    ("client_id", config.client_id.as_str()),
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                    ("device_code", code.device_code.as_str()),
+                ])
+                .send()
+                .await
+                .map_err(|source| MsaError::Http {
+                    service: "Microsoft",
+                    source,
+                })?;
+            let status = response.status();
+            let body = response.text().await.map_err(|source| MsaError::Http {
+                service: "Microsoft",
+                source,
+            })?;
+            if status.is_success() {
+                let token: MsToken =
+                    serde_json::from_str(&body).map_err(|_| MsaError::Service {
+                        service: "Microsoft",
+                        status: status.as_u16(),
+                        body: "unexpected token response".into(),
+                    })?;
+                return Ok(token);
+            }
+            match serde_json::from_str::<MsTokenError>(&body).map(|e| e.error) {
+                Ok(e) if e == "authorization_pending" => {}
+                Ok(e) if e == "slow_down" => interval += 5,
+                Ok(e) if e == "authorization_declined" => {
+                    return Err(AuthError::Denied("you declined the sign-in".into()).into());
+                }
+                Ok(e) if e == "expired_token" => return Err(AuthError::TimedOut.into()),
+                _ => {
+                    return Err(MsaError::Service {
+                        service: "Microsoft",
+                        status: status.as_u16(),
+                        body: truncate(body),
+                    });
+                }
+            }
+        }
+    };
+    let token = tokio::select! {
+        result = poll => result?,
+        () = cancel => return Err(AuthError::Cancelled.into()),
+    };
     minecraft_session(config, http, token).await
 }
 
@@ -466,6 +567,7 @@ mod tests {
             client_id: "client123".into(),
             authorize_url: "https://login.example/authorize".into(),
             token_url: format!("{}/token", server.uri()),
+            device_code_url: format!("{}/devicecode", server.uri()),
             xbl_url: format!("{}/xbl", server.uri()),
             xsts_url: format!("{}/xsts", server.uri()),
             minecraft_url: server.uri(),
@@ -713,6 +815,67 @@ mod tests {
         .unwrap();
         assert_eq!(session.account.name, "Alex");
         assert_eq!(session.refresh_token, "first_refresh");
+    }
+
+    // Polls once a second for real, so this takes ~3 s.
+    #[tokio::test]
+    async fn device_login_polls_until_approved() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/devicecode"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "user_code": "ABCD1234", "device_code": "secret-device",
+                "verification_uri": "https://www.microsoft.com/link",
+                "expires_in": 900, "interval": 1, "message": "..."
+            })))
+            .mount(&server)
+            .await;
+        // Pending twice, then approved.
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("device_code=secret-device"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(json!({"error": "authorization_pending"})),
+            )
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains(
+                "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "access_token": "ms_access", "refresh_token": "device_refresh"
+            })))
+            .mount(&server)
+            .await;
+        mount_chain(&server, xsts_ok()).await;
+        mount_profile(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"id": "0123456789abcdef0123456789abcdef", "name": "Alex"})),
+        )
+        .await;
+
+        let config = test_config(&server);
+        let http = reqwest::Client::new();
+        let code = start_device_login(&config, &http).await.unwrap();
+        assert_eq!(code.user_code, "ABCD1234");
+        let session = finish_device_login(&config, &http, &code, std::future::pending())
+            .await
+            .unwrap();
+        assert_eq!(session.refresh_token, "device_refresh");
+        assert_eq!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .filter(|r| r.url.path() == "/token")
+                .count(),
+            3
+        );
     }
 
     #[test]
