@@ -112,7 +112,12 @@
 
   main {
     flex: 1;
-    overflow-y: auto;
+    /* `scroll`, not `auto`: when a page starts short and grows past the
+       window (Home while loading), WebKitGTK adds the scrollbar without
+       reflowing, then reflows on some later restyle and every card shifts.
+       Only the thumb is styled, so nothing shows when there's nothing to
+       scroll. */
+    overflow-y: scroll;
     background: var(--bg);
     border-top: 1px solid var(--border);
     border-left: 1px solid var(--border);

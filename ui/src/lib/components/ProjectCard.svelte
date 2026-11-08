@@ -68,7 +68,9 @@
       <div class="chips">
         <span><Download size={14} />{compactNumber(project.downloads)}</span>
         <span><Heart size={14} />{compactNumber(project.follows)}</span>
-        <span><CalendarDays size={14} />{relativeTime(project.updated)}</span>
+        <span class="date"
+          ><CalendarDays size={14} /><span class="label">{relativeTime(project.updated)}</span></span
+        >
       </div>
     {/if}
   </div>
@@ -143,15 +145,21 @@
     background: var(--skeleton) center / cover no-repeat;
   }
 
+  /* Bounded on both sides so a narrow card can't push chips out of the
+     banner; the date chip gives way first. */
   .chips {
     position: absolute;
+    left: 10px;
     right: 10px;
     bottom: 10px;
     display: flex;
+    justify-content: flex-end;
     gap: 6px;
+    white-space: nowrap;
   }
 
-  .chips span {
+  .chips > span {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 5px;
@@ -161,6 +169,20 @@
     backdrop-filter: var(--blur);
     color: var(--text-strong);
     font-size: 0.82rem;
+  }
+
+  .chips > span :global(svg) {
+    flex-shrink: 0;
+  }
+
+  .chips > .date {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Spacing is margin, not padding: padding on a line-clamped box shows
