@@ -3,7 +3,7 @@
   import { installKey, installModpack, installToInstance, installs } from "../content.svelte";
   import type { SearchHit } from "../modrinth";
   import { openInstance } from "../navigation.svelte";
-  import { browse } from "../pages/browse.svelte";
+  import { browse } from "../pages/browseState.svelte";
   import InstallPopup from "./InstallPopup.svelte";
 
   let { hit }: { hit: SearchHit } = $props();

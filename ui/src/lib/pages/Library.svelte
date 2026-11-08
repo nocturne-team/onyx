@@ -3,7 +3,7 @@
   import InstanceCard from "../components/InstanceCard.svelte";
   import MyProjects from "../components/MyProjects.svelte";
   import { instances } from "../instances.svelte";
-  import { library, type LibraryTab } from "./library.svelte";
+  import { library, type LibraryTab } from "./libraryState.svelte";
 
   const tabs: { id: LibraryTab; label: string }[] = [
     { id: "instances", label: "Instances" },

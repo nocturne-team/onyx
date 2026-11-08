@@ -8,7 +8,7 @@
   import { gameVersions, instanceById, loaderNames, type Instance } from "../instances.svelte";
   import { openInstance } from "../navigation.svelte";
   import type { ProjectType, SearchIndex } from "../modrinth";
-  import { browse, loadMore, runSearch } from "./browse.svelte";
+  import { browse, loadMore, runSearch } from "./browseState.svelte";
 
   const types: { id: ProjectType; label: string }[] = [
     { id: "mod", label: "Mods" },

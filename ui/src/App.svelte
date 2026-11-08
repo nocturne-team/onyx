@@ -12,8 +12,8 @@
   import { loadSettings, settings } from "./lib/settings/store.svelte";
   import { pageTitles } from "./lib/nav";
   import { nav } from "./lib/navigation.svelte";
-  import { library } from "./lib/pages/library.svelte";
-  import { browse } from "./lib/pages/browse.svelte";
+  import { library } from "./lib/pages/libraryState.svelte";
+  import { browse } from "./lib/pages/browseState.svelte";
   import { restoreSession } from "./lib/account.svelte";
   import { initInstances, instanceById } from "./lib/instances.svelte";
   import { loadMinecraftAccounts } from "./lib/minecraft.svelte";

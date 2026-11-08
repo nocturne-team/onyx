@@ -4,7 +4,7 @@
   import { instances } from "../instances.svelte";
   import { activeAccount } from "../minecraft.svelte";
   import { nav, openInstance } from "../navigation.svelte";
-  import { browse, runSearch } from "../pages/browse.svelte";
+  import { browse, runSearch } from "../pages/browseState.svelte";
   import InstanceIcon from "./InstanceIcon.svelte";
   import SkinHead from "./SkinHead.svelte";
 
