@@ -22,6 +22,7 @@
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
   import IconEditor from "../components/IconEditor.svelte";
+  import JavaPicker from "../components/JavaPicker.svelte";
   import MemorySetting from "../components/MemorySetting.svelte";
   import { appInfo, settings } from "../settings/store.svelte";
   import { checkPackUpdate, updateModpack, type PackUpdate } from "../content.svelte";
@@ -35,6 +36,7 @@
     type ContentKind,
     setInstanceIcon,
     setInstanceIconConfig,
+    setInstanceJava,
     setInstanceMemory,
   } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
@@ -331,6 +333,16 @@
               setInstanceMemory(id, value).catch((e) => (optionsError = String(e)))}
           />
         {/await}
+        <h3 class="spaced">Java</h3>
+        <p class="muted">
+          Leave on the default unless you know you need a specific Java; the wrong major version
+          stops the game from starting.
+        </p>
+        <JavaPicker
+          value={instance.javaPath}
+          automaticLabel="Default (Settings, or Mojang's Java for this version)"
+          onChange={(path) => setInstanceJava(id, path).catch((e) => (optionsError = String(e)))}
+        />
         {#if optionsError}<p class="error-text">{optionsError}</p>{/if}
       </section>
     {:else}
@@ -601,6 +613,10 @@
 
   .options h3 {
     color: var(--text-strong);
+  }
+
+  .options .spaced {
+    margin-top: 14px;
   }
 
   .log {

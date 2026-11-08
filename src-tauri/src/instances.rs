@@ -11,9 +11,10 @@ use onyx_core::config;
 use onyx_core::download::{Progress, ProgressSnapshot};
 use onyx_core::instance::{self, IconConfig, Instance, Loader, NewInstance};
 use onyx_core::minecraft::forge::{self, ForgeLoader};
+use onyx_core::minecraft::java::JavaInstall;
 use onyx_core::minecraft::launch::{self, LaunchAccount, LaunchSpec};
 use onyx_core::minecraft::loader::{self, LoaderVersion, MetaLoader};
-use onyx_core::minecraft::{self, Environment, VersionManifest, install, java};
+use onyx_core::minecraft::{self, Environment, InstallError, VersionManifest, install, java};
 use onyx_core::mods::{self, ContentFile, ContentKind};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -119,6 +120,33 @@ fn set_icon_from_file(
         .ok_or("pick a PNG, JPEG, WebP or GIF image")?;
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     instance::set_icon(root(state), id, &bytes, extension).map_err(|e| e.to_string())
+}
+
+/// Java installs found on the system.
+#[tauri::command]
+pub async fn detect_java() -> Vec<JavaInstall> {
+    java::detect().await
+}
+
+/// Checks a Java binary the user picked and reads its version.
+#[tauri::command]
+pub async fn probe_java(path: PathBuf) -> Result<JavaInstall, String> {
+    java::probe(&path)
+        .await
+        .ok_or_else(|| "That doesn't look like a working Java binary".to_owned())
+}
+
+/// Sets a Java binary for one instance; `None` goes back to the Settings choice.
+#[tauri::command]
+pub fn set_instance_java(
+    state: State<'_, AppState>,
+    id: String,
+    java_path: Option<PathBuf>,
+) -> Result<Instance, String> {
+    let mut instance = instance::load(root(&state), &id).map_err(|e| e.to_string())?;
+    instance.java_path = java_path;
+    instance::save(root(&state), &instance).map_err(|e| e.to_string())?;
+    Ok(instance)
 }
 
 /// Sets the instance's max memory; `None` uses the default from Settings.
@@ -475,10 +503,40 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
             .map_or(("jre-legacy", 8), |j| {
                 (j.component.as_str(), j.major_version)
             });
-        *stage.lock().unwrap() = format!("Downloading Java {major}");
-        let java = java::ensure_runtime(http, meta, component, &progress)
-            .await
-            .map_err(|e| e.to_string())?;
+        let chosen = instance.java_path.clone().or_else(|| {
+            state
+                .settings
+                .lock()
+                .unwrap()
+                .java_overrides
+                .get(&major)
+                .cloned()
+        });
+        let java = match chosen {
+            Some(path) if path.is_file() => path,
+            Some(path) => {
+                return Err(format!(
+                    "The Java set for this instance ({}) doesn't exist anymore. Pick another in Options or Settings.",
+                    path.display()
+                ));
+            }
+            None => {
+                *stage.lock().unwrap() = format!("Downloading Java {major}");
+                match java::ensure_runtime(http, meta, component, &progress).await {
+                    Ok(java) => java,
+                    // No Mojang runtime for this platform: use an installed one.
+                    Err(InstallError::NoJavaRuntime(_)) => java::detect()
+                        .await
+                        .into_iter()
+                        .find(|j| j.major == major)
+                        .map(|j| j.path)
+                        .ok_or_else(|| {
+                            format!("No Java {major} found. Install Java {major} and pick it in Settings > Java installations.")
+                        })?,
+                    Err(e) => return Err(e.to_string()),
+                }
+            }
+        };
         progress.reset();
         *stage.lock().unwrap() = format!("Downloading Minecraft {}", version.id);
         install::install_version(http, meta, &version, &env, &progress)

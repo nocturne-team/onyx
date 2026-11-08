@@ -50,6 +50,9 @@ pub struct Instance {
     /// The Modrinth modpack version this instance was installed from, if known.
     #[serde(default)]
     pub pack: Option<PackSource>,
+    /// A specific Java binary for this instance, over the Settings choice.
+    #[serde(default)]
+    pub java_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,6 +187,7 @@ pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> 
         icon: None,
         icon_config: new.icon_config.filter(IconConfig::is_reasonable),
         pack: None,
+        java_path: None,
     };
     save(root, &instance)?;
     Ok(instance)

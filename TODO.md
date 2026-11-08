@@ -2,7 +2,7 @@
 
 ## Next
 
-- [ ] Settings: Java installations (pick a Java per instance, use a system JRE, Linux arm64 has no Mojang runtime)
+- [ ] Cancel an install that's still preparing
 
 ## Later
 
@@ -10,8 +10,7 @@
 - [ ] Microsoft login: device code flow as a fallback when the browser redirect can't work
 - [ ] Forge before 1.13 (old installer format with `versionInfo`)
 - [ ] "Support Forge" link on Forge instances (Forge's version.json asks automated installers for it)
-- [ ] Cancel an install that's still preparing
-
+- [ ] Warn in instance Options when the picked Java's major version doesn't match what the game version needs
 - [ ] Total physical memory on Windows (the memory slider falls back to a 16 GB cap there)
 
 ## Before release

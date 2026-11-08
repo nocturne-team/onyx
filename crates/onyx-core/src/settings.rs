@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +23,8 @@ pub struct Settings {
     /// Max heap for instances without their own setting. `None` means
     /// Mojang's recommendation for the version (or 2 GB for old versions).
     pub default_memory_mb: Option<u32>,
+    /// Java binary to use per Java major version, instead of Mojang's runtime.
+    pub java_overrides: BTreeMap<u32, PathBuf>,
 }
 
 impl Default for Settings {
@@ -30,6 +33,7 @@ impl Default for Settings {
             theme: Theme::Dark,
             advanced_rendering: true,
             default_memory_mb: None,
+            java_overrides: BTreeMap::new(),
         }
     }
 }
@@ -116,6 +120,7 @@ mod tests {
             theme: Theme::Oled,
             advanced_rendering: false,
             default_memory_mb: Some(6144),
+            java_overrides: BTreeMap::from([(21, PathBuf::from("/usr/lib/jvm/java-21/bin/java"))]),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);

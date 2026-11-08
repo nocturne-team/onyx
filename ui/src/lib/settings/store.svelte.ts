@@ -8,6 +8,8 @@ export interface Settings {
   advancedRendering: boolean;
   /** Megabytes; null means Mojang's recommendation per version. */
   defaultMemoryMb: number | null;
+  /** Java binary per Java major version; missing means Mojang's runtime. */
+  javaOverrides: Record<string, string>;
 }
 
 export interface AppInfo {
@@ -20,6 +22,7 @@ export const settings = $state<Settings>({
   theme: "dark",
   advancedRendering: true,
   defaultMemoryMb: null,
+  javaOverrides: {},
 });
 
 export async function loadSettings() {

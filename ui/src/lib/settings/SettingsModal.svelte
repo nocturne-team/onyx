@@ -1,4 +1,5 @@
 <script lang="ts">
+  import JavaPicker from "../components/JavaPicker.svelte";
   import MemorySetting from "../components/MemorySetting.svelte";
   import {
     Coffee,
@@ -120,6 +121,28 @@
               <span></span>
             </button>
           </div>
+        {:else if active === "java"}
+          <h3>Java installations</h3>
+          <p class="hint">
+            Onyx downloads Mojang's Java for each Minecraft version on its own. Pick an installed Java
+            here to use it instead.
+          </p>
+          {#each [25, 21, 17, 8] as major (major)}
+            <div class="java-row">
+              <h4>Java {major}</h4>
+              <JavaPicker
+                {major}
+                value={settings.javaOverrides[major] ?? null}
+                automaticLabel="Automatic (Mojang's Java {major})"
+                onChange={(path) => {
+                  const next = { ...settings.javaOverrides };
+                  if (path) next[major] = path;
+                  else delete next[major];
+                  updateSettings({ javaOverrides: next });
+                }}
+              />
+            </div>
+          {/each}
         {:else if active === "instance"}
           <h3>Memory</h3>
           <p class="hint">Maximum memory for instances that don't set their own.</p>
@@ -325,6 +348,18 @@
   .selected .radio {
     border-color: var(--brand);
     background: radial-gradient(var(--brand) 40%, transparent 45%);
+  }
+
+  .java-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 16px;
+  }
+
+  .java-row h4 {
+    font-size: 0.95rem;
+    color: var(--text-strong);
   }
 
   .toggle-row {

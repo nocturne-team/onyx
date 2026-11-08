@@ -19,6 +19,8 @@ export interface Instance {
   iconConfig: IconConfig | null;
   /** The Modrinth modpack version this came from, when known. */
   pack: { projectId: string; versionId: string; versionNumber: string } | null;
+  /** A Java binary just for this instance. */
+  javaPath: string | null;
 }
 
 export interface Progress {
@@ -227,6 +229,11 @@ export async function setInstanceIcon(id: string, path: string) {
 
 export async function setInstanceMemory(id: string, maxMemoryMb: number | null) {
   await invoke("set_instance_memory", { id, maxMemoryMb });
+  await loadInstances();
+}
+
+export async function setInstanceJava(id: string, javaPath: string | null) {
+  await invoke("set_instance_java", { id, javaPath });
   await loadInstances();
 }
 

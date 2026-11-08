@@ -231,3 +231,157 @@ mod tests {
         assert_eq!(platform(Os::Linux, "aarch64"), None);
     }
 }
+
+/// A Java runtime found on the system.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JavaInstall {
+    /// The `java` / `javaw.exe` binary.
+    pub path: PathBuf,
+    /// Full version, e.g. `21.0.5`.
+    pub version: String,
+    /// `8` for `1.8.0_xxx`, otherwise the first number.
+    pub major: u32,
+}
+
+/// `1.8.0_402` is Java 8; `21.0.5` is Java 21.
+fn major_of(version: &str) -> Option<u32> {
+    let mut parts = version.split(['.', '_', '+', '-']);
+    match parts.next()?.parse().ok()? {
+        1 => parts.next()?.parse().ok(),
+        major => Some(major),
+    }
+}
+
+/// Reads a Java binary's version from the `release` file next to its `bin`
+/// directory, or by running `java -version` when there isn't one.
+pub async fn probe(java: &Path) -> Option<JavaInstall> {
+    let java = std::fs::canonicalize(java).ok()?;
+    if !java.is_file() {
+        return None;
+    }
+    let home = java.parent()?.parent()?;
+    let from_release = std::fs::read_to_string(home.join("release"))
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("JAVA_VERSION="))
+                .map(|v| v.trim_matches('"').to_owned())
+        });
+    let version = match from_release {
+        Some(version) => version,
+        None => {
+            let mut command = tokio::process::Command::new(&java);
+            command.arg("-version").stdin(std::process::Stdio::null());
+            #[cfg(windows)]
+            {
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                command.creation_flags(CREATE_NO_WINDOW);
+            }
+            let output = tokio::time::timeout(std::time::Duration::from_secs(10), command.output())
+                .await
+                .ok()?
+                .ok()?;
+            // `openjdk version "21.0.5" 2024-10-15` (on stderr).
+            let text = String::from_utf8_lossy(&output.stderr);
+            text.lines().next()?.split('"').nth(1)?.to_owned()
+        }
+    };
+    Some(JavaInstall {
+        major: major_of(&version)?,
+        version,
+        path: java,
+    })
+}
+
+/// Java installs in the usual places, plus `JAVA_HOME` and `PATH`.
+/// Onyx's own Mojang runtimes are left out; those are the automatic choice.
+pub async fn detect() -> Vec<JavaInstall> {
+    let os = Os::current();
+    let binary = |home: &Path| java_binary(home, os);
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Some(home) = std::env::var_os("JAVA_HOME") {
+        candidates.push(binary(Path::new(&home)));
+    }
+    let name = if os == Os::Windows {
+        "javaw.exe"
+    } else {
+        "java"
+    };
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(name)));
+    }
+
+    let roots: Vec<PathBuf> = match os {
+        Os::Windows => ["ProgramFiles", "ProgramFiles(x86)"]
+            .iter()
+            .filter_map(std::env::var_os)
+            .flat_map(|base| {
+                [
+                    "Java",
+                    "Eclipse Adoptium",
+                    "Microsoft",
+                    "Zulu",
+                    "BellSoft",
+                    "Amazon Corretto",
+                ]
+                .map(|vendor| Path::new(&base).join(vendor))
+            })
+            .collect(),
+        _ => vec![
+            "/usr/lib/jvm".into(),
+            "/usr/lib64/jvm".into(),
+            "/usr/java".into(),
+            "/opt".into(),
+            directories::BaseDirs::new()
+                .map(|d| d.home_dir().join(".sdkman/candidates/java"))
+                .unwrap_or_default(),
+        ],
+    };
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            candidates.push(binary(&entry.path()));
+        }
+    }
+
+    let mut found: Vec<JavaInstall> = Vec::new();
+    for candidate in candidates {
+        if !candidate.is_file() {
+            continue;
+        }
+        if let Some(install) = probe(&candidate).await {
+            if !found.iter().any(|f| f.path == install.path) {
+                found.push(install);
+            }
+        }
+    }
+    found.sort_by(|a, b| b.major.cmp(&a.major).then_with(|| a.path.cmp(&b.path)));
+    found
+}
+
+#[cfg(test)]
+mod detect_tests {
+    use super::*;
+
+    #[test]
+    fn majors() {
+        assert_eq!(major_of("1.8.0_402"), Some(8));
+        assert_eq!(major_of("21.0.5"), Some(21));
+        assert_eq!(major_of("25"), Some(25));
+        assert_eq!(major_of("17.0.15+6"), Some(17));
+        assert_eq!(major_of("garbage"), None);
+    }
+
+    #[tokio::test]
+    async fn finds_system_javas_here() {
+        // Only meaningful on a machine with Java installed (the dev box has 17 and 21).
+        let found = detect().await;
+        if Path::new("/usr/lib/jvm/java-21-openjdk/bin/java").exists() {
+            assert!(found.iter().any(|j| j.major == 21), "{found:?}");
+        }
+    }
+}
