@@ -25,7 +25,7 @@
     type LoaderVersion,
   } from "../instances.svelte";
   import { nav, openInstance } from "../navigation.svelte";
-  import { browse, runSearch } from "../pages/browse.svelte";
+  import { browse, runSearch } from "../pages/browseState.svelte";
   import { randomIconConfig, type IconConfig } from "../iconCatalog";
   import IconEditor from "./IconEditor.svelte";
   import InstanceIcon from "./InstanceIcon.svelte";

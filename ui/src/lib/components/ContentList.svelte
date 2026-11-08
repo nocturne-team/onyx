@@ -24,7 +24,7 @@
   import { instanceById, instances, type ContentFile, type ContentKind } from "../instances.svelte";
   import { cachedIcon } from "../modrinth";
   import { nav } from "../navigation.svelte";
-  import { browse, runSearch } from "../pages/browse.svelte";
+  import { browse, runSearch } from "../pages/browseState.svelte";
 
   let { id, kind }: { id: string; kind: ContentKind } = $props();
 
