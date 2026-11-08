@@ -50,6 +50,25 @@
   let tab = $state<"content" | "logs" | "options">("content");
   let optionsError = $state<string | null>(null);
   const info = appInfo();
+
+  // The Java this version needs, and the major of a hand-picked one, to warn
+  // about mismatches before the game fails to start.
+  let neededJava = $state<number | null>(null);
+  let pickedJava = $state<number | null>(null);
+  $effect(() => {
+    if (tab !== "options") return;
+    invoke<number>("required_java", { id })
+      .then((major) => (neededJava = major))
+      .catch(() => (neededJava = null));
+  });
+  $effect(() => {
+    const path = instance?.javaPath;
+    pickedJava = null;
+    if (!path) return;
+    invoke<{ major: number }>("probe_java", { path })
+      .then((java) => (pickedJava = java.major))
+      .catch(() => (pickedJava = null));
+  });
   let contentKind = $state<ContentKind>("mods");
   // Vanilla can't load mods, so it starts on resource packs.
   $effect(() => {
@@ -343,6 +362,16 @@
           automaticLabel="Default (Settings, or Mojang's Java for this version)"
           onChange={(path) => setInstanceJava(id, path).catch((e) => (optionsError = String(e)))}
         />
+        {#if neededJava !== null}
+          {#if pickedJava !== null && pickedJava !== neededJava}
+            <p class="error-text">
+              Minecraft {instance.gameVersion} needs Java {neededJava}, but this is Java {pickedJava}.
+              {pickedJava < neededJava ? "It won't start." : "Newer Java often works, but isn't guaranteed."}
+            </p>
+          {:else}
+            <p class="muted">Minecraft {instance.gameVersion} needs Java {neededJava}.</p>
+          {/if}
+        {/if}
         {#if optionsError}<p class="error-text">{optionsError}</p>{/if}
       </section>
     {:else}

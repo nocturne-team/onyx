@@ -134,6 +134,20 @@ fn set_icon_from_file(
     instance::set_icon(root(state), id, &bytes, extension).map_err(|e| e.to_string())
 }
 
+/// The Java major version an instance's game version needs.
+#[tauri::command]
+pub async fn required_java(state: State<'_, AppState>, id: String) -> Result<u32, String> {
+    let instance = instance::load(root(&state), &id).map_err(|e| e.to_string())?;
+    let version = minecraft::version_info(
+        state.modrinth.http(),
+        &state.paths.meta,
+        &instance.game_version,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(version.java_version.map_or(8, |j| j.major_version))
+}
+
 /// Java installs found on the system.
 #[tauri::command]
 pub async fn detect_java() -> Vec<JavaInstall> {

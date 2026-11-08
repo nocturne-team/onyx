@@ -2,11 +2,10 @@
 
 ## Next
 
-- [ ] Warn in instance Options when the picked Java's major version doesn't match what the game version needs
+- [ ] Use the pack's icon for imported `.mrpack` files (only Browse installs get the Modrinth icon now)
 
 ## Later
 
-- [ ] Use the pack's icon for imported `.mrpack` files (only Browse installs get the Modrinth icon now)
 - [ ] Microsoft login: device code flow as a fallback when the browser redirect can't work
 - [ ] Forge before 1.13 (old installer format with `versionInfo`)
 - [ ] "Support Forge" link on Forge instances (Forge's version.json asks automated installers for it)

@@ -109,6 +109,7 @@ fn main() {
             instances::set_instance_memory,
             instances::set_instance_java,
             instances::detect_java,
+            instances::required_java,
             instances::probe_java,
             instances::set_instance_icon_config,
             instances::instance_icon,
