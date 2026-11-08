@@ -6,7 +6,6 @@
     ImageUp,
     Palette,
     RefreshCw,
-    Inbox,
     ScrollText,
     Tag,
     Trash2,
@@ -16,7 +15,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { tick } from "svelte";
   import InstanceIcon from "../components/InstanceIcon.svelte";
-  import ModList from "../components/ModList.svelte";
+  import ContentList from "../components/ContentList.svelte";
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
   import IconEditor from "../components/IconEditor.svelte";
@@ -27,6 +26,7 @@
     instances,
     loaderNames,
     pickIconFile,
+    type ContentKind,
     setInstanceIcon,
     setInstanceIconConfig,
   } from "../instances.svelte";
@@ -39,6 +39,20 @@
   const error = $derived(instances.errors[id]);
 
   let tab = $state<"content" | "logs">("content");
+  let contentKind = $state<ContentKind>("mods");
+  // Vanilla can't load mods, so it starts on resource packs.
+  $effect(() => {
+    if (instance?.loader === "vanilla" && contentKind === "mods") contentKind = "resourcepacks";
+  });
+  const contentKinds = $derived(
+    (
+      [
+        ["mods", "Mods"],
+        ["resourcepacks", "Resource packs"],
+        ["shaderpacks", "Shaders"],
+      ] as [ContentKind, string][]
+    ).filter(([kind]) => kind !== "mods" || instance?.loader !== "vanilla"),
+  );
   let confirmingDelete = $state(false);
   let iconMenu = $state(false);
   let iconError = $state<string | null>(null);
@@ -244,14 +258,13 @@
       </button>
     </nav>
 
-    {#if tab === "content" && instance.loader !== "vanilla"}
-      <ModList {id} />
-    {:else if tab === "content"}
-      <div class="empty">
-        <Inbox size={48} />
-        <h3>No content installed</h3>
-        <p class="muted">Vanilla instances don't load mods. Create one with a mod loader to use them.</p>
+    {#if tab === "content"}
+      <div class="kinds">
+        {#each contentKinds as [kind, label] (kind)}
+          <button class:active={contentKind === kind} onclick={() => (contentKind = kind)}>{label}</button>
+        {/each}
       </div>
+      <ContentList {id} kind={contentKind} />
     {:else}
       <pre class="log" bind:this={logEl} onscroll={onScroll}></pre>
     {/if}
@@ -463,20 +476,28 @@
     color: var(--brand);
   }
 
-  .empty {
+  .kinds {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 60px 20px;
-    text-align: center;
+    gap: 6px;
+  }
+
+  .kinds button {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.9rem;
     color: var(--text-muted);
   }
 
-  .empty h3 {
-    color: var(--text-strong);
-    font-size: 1.3rem;
+  .kinds button:hover {
+    background: var(--bg-button);
   }
+
+  .kinds button.active {
+    background: var(--bg-button);
+    color: var(--text-strong);
+  }
+
 
   .log {
     flex: 1;

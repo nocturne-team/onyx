@@ -172,10 +172,13 @@ export function loaderVersions(
   return invoke<LoaderVersion[]>("loader_versions", { loader, gameVersion });
 }
 
-/** Mirrors `onyx_core::mods::ModFile`. */
-export interface ModFile {
+export type ContentKind = "mods" | "resourcepacks" | "shaderpacks";
+
+/** Mirrors `onyx_core::mods::ContentFile`. */
+export interface ContentFile {
   fileName: string;
   enabled: boolean;
+  isDir: boolean;
   size: number;
   modId: string | null;
   name: string | null;

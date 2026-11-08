@@ -2,21 +2,38 @@
   import { Compass, FolderOpen, Inbox, Package, RefreshCw, Search, Trash2 } from "@lucide/svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { identifyContent, installKey, installs, type KnownFile } from "../content.svelte";
-  import { instanceById, instances, type ModFile } from "../instances.svelte";
+  import { instanceById, instances, type ContentFile, type ContentKind } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browse.svelte";
 
-  let { id }: { id: string } = $props();
+  let { id, kind }: { id: string; kind: ContentKind } = $props();
 
-  let mods = $state<ModFile[] | null>(null);
-  /** Modrinth info by "mods/<file name>"; filled in after the list shows. */
+  const labels: Record<ContentKind, { one: string; many: string; projectType: "mod" | "resourcepack" | "shader"; hint: string }> = {
+    mods: { one: "mod", many: "mods", projectType: "mod", hint: "drop .jar files into the mods folder" },
+    resourcepacks: {
+      one: "resource pack",
+      many: "resource packs",
+      projectType: "resourcepack",
+      hint: "drop .zip files into the resourcepacks folder",
+    },
+    shaderpacks: {
+      one: "shader",
+      many: "shaders",
+      projectType: "shader",
+      hint: "drop .zip files into the shaderpacks folder (shaders need Iris or OptiFine)",
+    },
+  };
+  const label = $derived(labels[kind]);
+
+  let mods = $state<ContentFile[] | null>(null);
+  /** Modrinth info by "<folder>/<file name>"; filled in after the list shows. */
   let known = $state<Record<string, KnownFile>>({});
   let error = $state<string | null>(null);
   let filter = $state("");
 
   async function load() {
     try {
-      mods = await invoke<ModFile[]>("list_mods", { id });
+      mods = await invoke<ContentFile[]>("list_content", { id, kind });
       error = null;
     } catch (e) {
       error = String(e);
@@ -27,7 +44,7 @@
       .catch((e) => console.warn("couldn't identify mods", e));
   }
 
-  const info = (mod: ModFile) => known[`mods/${mod.fileName}`];
+  const info = (mod: ContentFile) => known[`${kind}/${mod.fileName}`];
 
   function browseContent() {
     const instance = instanceById(id);
@@ -40,7 +57,7 @@
     };
     // So Browse shows what's already here as installed.
     for (const file of Object.values(known)) installs[installKey(id, file.projectId)] = "installed";
-    browse.projectType = "mod";
+    browse.projectType = label.projectType;
     browse.query = "";
     runSearch();
     nav.page = "browse";
@@ -55,6 +72,9 @@
   });
 
   $effect(() => {
+    void kind;
+    mods = null;
+    filter = "";
     load();
     // Pick up jars dropped into the folder while Onyx is open.
     const onFocus = () => load();
@@ -62,25 +82,25 @@
     return () => window.removeEventListener("focus", onFocus);
   });
 
-  async function toggle(mod: ModFile) {
+  async function toggle(mod: ContentFile) {
     try {
-      await invoke("set_mod_enabled", { id, fileName: mod.fileName, enabled: !mod.enabled });
+      await invoke("set_content_enabled", { id, kind, fileName: mod.fileName, enabled: !mod.enabled });
     } catch (e) {
       error = String(e);
     }
     load();
   }
 
-  async function remove(mod: ModFile) {
+  async function remove(mod: ContentFile) {
     try {
-      await invoke("remove_mod", { id, fileName: mod.fileName });
+      await invoke("remove_content", { id, kind, fileName: mod.fileName });
     } catch (e) {
       error = String(e);
     }
     load();
   }
 
-  const openFolder = () => invoke("open_instance_subfolder", { id, folder: "mods" });
+  const openFolder = () => invoke("open_instance_subfolder", { id, folder: kind });
 
   const visible = $derived(
     (mods ?? []).filter((m) =>
@@ -94,10 +114,10 @@
 {#if mods && mods.length === 0}
   <div class="empty">
     <Inbox size={48} />
-    <h3>No mods installed</h3>
-    <p class="muted">Find mods on Modrinth, or drop .jar files into the mods folder.</p>
+    <h3>No {label.many} installed</h3>
+    <p class="muted">Find {label.many} on Modrinth, or {label.hint}.</p>
     <div class="buttons">
-      <button class="secondary" onclick={openFolder}><FolderOpen size={17} /> Open mods folder</button>
+      <button class="secondary" onclick={openFolder}><FolderOpen size={17} /> Open folder</button>
       <button class="primary" onclick={browseContent}><Compass size={17} /> Browse content</button>
     </div>
   </div>
@@ -105,7 +125,7 @@
   <div class="toolbar">
     <div class="search">
       <Search size={16} />
-      <input placeholder="Search {mods.length} {mods.length === 1 ? 'mod' : 'mods'}..." bind:value={filter} />
+      <input placeholder="Search {mods.length} {mods.length === 1 ? label.one : label.many}..." bind:value={filter} />
     </div>
     <button class="icon-button" title="Refresh" onclick={load}><RefreshCw size={17} /></button>
     <button class="secondary" onclick={openFolder}><FolderOpen size={17} /> Open folder</button>
@@ -122,7 +142,10 @@
         {/if}
         <div class="main">
           <strong>{info(mod)?.title ?? mod.name ?? mod.fileName}</strong>
-          <span class="muted">{mod.version ? `${mod.version} · ` : ""}{mod.fileName}</span>
+          <span class="muted">{[mod.version ?? info(mod)?.versionNumber, mod.fileName + (mod.isDir ? "/" : "")]
+              .filter(Boolean)
+              .join(" · ")}</span>
+          {#if mod.description && !info(mod)}<span class="muted">{mod.description}</span>{/if}
         </div>
         <button
           class="switch"

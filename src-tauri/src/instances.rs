@@ -14,7 +14,7 @@ use onyx_core::minecraft::forge::{self, ForgeLoader};
 use onyx_core::minecraft::launch::{self, LaunchAccount, LaunchSpec};
 use onyx_core::minecraft::loader::{self, LoaderVersion, MetaLoader};
 use onyx_core::minecraft::{self, Environment, VersionManifest, install, java};
-use onyx_core::mods::{self, ModFile};
+use onyx_core::mods::{self, ContentFile, ContentKind};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -192,29 +192,39 @@ pub async fn loader_versions(
 }
 
 #[tauri::command]
-pub async fn list_mods(state: State<'_, AppState>, id: String) -> Result<Vec<ModFile>, String> {
+pub async fn list_content(
+    state: State<'_, AppState>,
+    id: String,
+    kind: ContentKind,
+) -> Result<Vec<ContentFile>, String> {
     let dir = instance::instance_dir(root(&state), &id).map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || mods::list(&dir))
+    tauri::async_runtime::spawn_blocking(move || mods::list(&dir, kind))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn set_mod_enabled(
+pub fn set_content_enabled(
     state: State<'_, AppState>,
     id: String,
+    kind: ContentKind,
     file_name: String,
     enabled: bool,
 ) -> Result<String, String> {
     let dir = instance::instance_dir(root(&state), &id).map_err(|e| e.to_string())?;
-    mods::set_enabled(&dir, &file_name, enabled).map_err(|e| e.to_string())
+    mods::set_enabled(&dir, kind, &file_name, enabled).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn remove_mod(state: State<'_, AppState>, id: String, file_name: String) -> Result<(), String> {
+pub fn remove_content(
+    state: State<'_, AppState>,
+    id: String,
+    kind: ContentKind,
+    file_name: String,
+) -> Result<(), String> {
     let dir = instance::instance_dir(root(&state), &id).map_err(|e| e.to_string())?;
-    mods::remove(&dir, &file_name).map_err(|e| e.to_string())
+    mods::remove(&dir, kind, &file_name).map_err(|e| e.to_string())
 }
 
 /// Opens a folder inside the instance (e.g. `mods`), creating it if needed.
