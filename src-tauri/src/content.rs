@@ -161,8 +161,14 @@ pub async fn import_mrpack(
         Err(_) => None,
     };
     let instance = create_pack_instance(&state, &index)?;
+    let project_id = pack.as_ref().map(|p| p.project_id.clone());
     start_pack_install(app, &state, &instance.id, path, None, index, pack);
-    Ok(instance)
+    match project_id {
+        Some(project_id) => Ok(use_project_icon(&state, &project_id, &instance)
+            .await
+            .unwrap_or(instance)),
+        None => Ok(instance),
+    }
 }
 
 /// Downloads the newest version of a modpack project and installs it as a

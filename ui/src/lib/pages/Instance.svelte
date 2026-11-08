@@ -6,6 +6,7 @@
     ImageUp,
     ArrowUpCircle,
     Package,
+    Heart,
     Palette,
     RefreshCw,
     ScrollText,
@@ -246,6 +247,17 @@
               ? `Played ${relativeTime(new Date(instance.lastPlayed * 1000))}`
               : "Never played"}
           </span>
+          {#if instance.loader === "forge"}
+            <span class="dot"></span>
+            <button
+              class="support"
+              title="Forge asks launchers that install it automatically to point here"
+              onclick={() =>
+                invoke("open_external", { url: "https://www.patreon.com/LexManos/" }).catch(() => {})}
+            >
+              <Heart size={14} /> Support Forge
+            </button>
+          {/if}
           {#if instance.pack}
             <span class="dot"></span>
             <span><Package size={15} /> Modpack {instance.pack.versionNumber}</span>
@@ -483,6 +495,17 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .support {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-muted);
+  }
+
+  .support:hover {
+    color: #ff7b9c;
   }
 
   .meta .dot {
