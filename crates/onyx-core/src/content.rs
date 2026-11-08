@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cache::CachePolicy;
 use crate::download::{self, Download, DownloadError};
@@ -243,8 +243,30 @@ pub async fn identify(
         .collect())
 }
 
+/// Where `hash_files` remembers hashes between runs, inside the game dir.
+const HASH_CACHE: &str = ".onyx/hashes.json";
+
+/// A file's SHA-1 as of the size and modification time it had then.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CachedHash {
+    size: u64,
+    modified_ms: u128,
+    sha1: String,
+}
+
 /// SHA-1 of every file in the content folders, mapped to `<folder>/<name>`.
+///
+/// Hashes are kept in `.onyx/hashes.json` and reused while a file's size and
+/// modification time stay the same, so opening the Content tab doesn't read
+/// every jar again.
 async fn hash_files(game_dir: &Path) -> Result<HashMap<String, String>, ContentError> {
+    let cache_path = game_dir.join(HASH_CACHE);
+    let old: HashMap<String, CachedHash> = tokio::fs::read(&cache_path)
+        .await
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    let mut new: HashMap<String, CachedHash> = HashMap::new();
     let mut by_hash: HashMap<String, String> = HashMap::new();
     for folder in SCANNED {
         let dir = game_dir.join(folder);
@@ -256,15 +278,44 @@ async fn hash_files(game_dir: &Path) -> Result<HashMap<String, String>, ContentE
                 continue;
             }
             let path = entry.path();
-            match download::sha1_file(&path).await {
-                Ok(hash) => {
-                    by_hash.insert(
-                        hash,
-                        format!("{folder}/{}", entry.file_name().to_string_lossy()),
-                    );
+            let key = format!("{folder}/{}", entry.file_name().to_string_lossy());
+            let meta = entry.metadata().await.map_err(|source| ContentError::Io {
+                path: path.clone(),
+                source,
+            })?;
+            let modified_ms = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_millis());
+            let sha1 = match old.get(&key) {
+                Some(c)
+                    if c.size == meta.len() && c.modified_ms == modified_ms && modified_ms != 0 =>
+                {
+                    c.sha1.clone()
                 }
-                Err(source) => return Err(ContentError::Io { path, source }),
-            }
+                _ => download::sha1_file(&path)
+                    .await
+                    .map_err(|source| ContentError::Io { path, source })?,
+            };
+            new.insert(
+                key.clone(),
+                CachedHash {
+                    size: meta.len(),
+                    modified_ms,
+                    sha1: sha1.clone(),
+                },
+            );
+            by_hash.insert(sha1, key);
+        }
+    }
+    if new != old {
+        // Only a speed-up; a failed write just means hashing again next time.
+        if let Some(parent) = cache_path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        if let Ok(json) = serde_json::to_vec(&new) {
+            let _ = tokio::fs::write(&cache_path, json).await;
         }
     }
     Ok(by_hash)
@@ -394,6 +445,30 @@ mod tests {
 
     use super::*;
     use crate::cache::ResponseCache;
+
+    #[tokio::test]
+    async fn hashes_are_reused_until_the_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("mods")).unwrap();
+        let jar = dir.path().join("mods/a.jar");
+        std::fs::write(&jar, b"one").unwrap();
+        let real = download::hex(&Sha1::digest(b"one"));
+        assert_eq!(hash_files(dir.path()).await.unwrap()[&real], "mods/a.jar");
+
+        // A cached hash wins while size and mtime match...
+        let cache = dir.path().join(HASH_CACHE);
+        let text = std::fs::read_to_string(&cache)
+            .unwrap()
+            .replace(&real, "cafe");
+        std::fs::write(&cache, text).unwrap();
+        assert!(hash_files(dir.path()).await.unwrap().contains_key("cafe"));
+
+        // ...and is dropped once the file changes.
+        std::fs::write(&jar, b"longer").unwrap();
+        let changed = download::hex(&Sha1::digest(b"longer"));
+        let hashes = hash_files(dir.path()).await.unwrap();
+        assert_eq!(hashes.keys().collect::<Vec<_>>(), [&changed]);
+    }
 
     fn version(
         id: &str,

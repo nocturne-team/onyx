@@ -12,7 +12,7 @@ use onyx_core::instance::{self, Instance, NewInstance, PackSource};
 use onyx_core::modpack::{self, Index};
 use onyx_core::modrinth::Version;
 use onyx_core::paths;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
@@ -90,7 +90,7 @@ pub async fn apply_update(
 }
 
 /// What Modrinth knows about an installed file.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnownFile {
     pub project_id: String,
@@ -119,7 +119,7 @@ pub async fn identify_content(
         .await
         .map_err(|e| e.to_string())?;
     let projects: HashMap<&str, _> = projects.iter().map(|p| (p.id.as_str(), p)).collect();
-    Ok(versions
+    let known: HashMap<String, KnownFile> = versions
         .iter()
         .filter_map(|(file, version)| {
             let project = projects.get(version.project_id.as_str())?;
@@ -133,7 +133,34 @@ pub async fn identify_content(
                 },
             ))
         })
-        .collect())
+        .collect();
+    // Shown by `cached_content_info` next time while this runs again.
+    if let Ok(json) = serde_json::to_vec(&known) {
+        let path = game_dir.join(KNOWN_CACHE);
+        if let Some(parent) = path.parent() {
+            let _ = tokio::fs::create_dir_all(parent).await;
+        }
+        let _ = tokio::fs::write(path, json).await;
+    }
+    Ok(known)
+}
+
+const KNOWN_CACHE: &str = ".onyx/known-content.json";
+
+/// The last `identify_content` result for this instance, without hashing or
+/// asking Modrinth. Empty when there isn't one yet.
+#[tauri::command]
+pub async fn cached_content_info(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<HashMap<String, KnownFile>, String> {
+    let game_dir =
+        instance::instance_dir(&state.paths.instances, &id).map_err(|e| e.to_string())?;
+    Ok(tokio::fs::read(game_dir.join(KNOWN_CACHE))
+        .await
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default())
 }
 
 /// Creates an instance from a `.mrpack` on disk. Returns right away; the

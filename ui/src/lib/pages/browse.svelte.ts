@@ -19,15 +19,19 @@ export const browse = $state({
   /** Filters picked by hand when there's no target; "" means any. */
   loader: "",
   gameVersion: "",
+  /** Category tags that must all match; works with or without a target. */
+  categories: [] as string[],
 });
 
-/** Loader and game version facets: the target instance's, or the picked ones. */
+/** Loader, game version and category facets: the target instance's, or the picked ones. */
 function targetFilters() {
   const target = browse.target;
+  const categories = browse.categories.length ? [...browse.categories] : undefined;
   if (!target) {
     return {
       loaders: browse.loader && browse.projectType !== "resourcepack" ? [browse.loader] : undefined,
       gameVersions: browse.gameVersion ? [browse.gameVersion] : undefined,
+      categories,
     };
   }
   const loaders =
@@ -36,7 +40,7 @@ function targetFilters() {
         ? ["quilt", "fabric"]
         : [target.loader]
       : undefined;
-  return { loaders, gameVersions: [target.gameVersion] };
+  return { loaders, gameVersions: [target.gameVersion], categories };
 }
 
 // Bumped on every new search so responses from older ones get dropped.

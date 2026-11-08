@@ -25,6 +25,10 @@ pub struct Settings {
     pub default_memory_mb: Option<u32>,
     /// Java binary to use per Java major version, instead of Mojang's runtime.
     pub java_overrides: BTreeMap<u32, PathBuf>,
+    /// Files downloaded at the same time during installs.
+    pub max_concurrent_downloads: u32,
+    /// Download speed cap across the whole app in KiB/s; `None` is unlimited.
+    pub download_limit_kib: Option<u32>,
 }
 
 impl Default for Settings {
@@ -34,9 +38,24 @@ impl Default for Settings {
             advanced_rendering: true,
             default_memory_mb: None,
             java_overrides: BTreeMap::new(),
+            max_concurrent_downloads: crate::download::DEFAULT_CONCURRENCY as u32,
+            download_limit_kib: None,
         }
     }
 }
+
+impl Settings {
+    /// Pushes the download settings into `download::set_limits`.
+    pub fn apply_download_limits(&self) {
+        crate::download::set_limits(
+            self.max_concurrent_downloads as usize,
+            self.download_limit_kib.map(|kib| u64::from(kib) * 1024),
+        );
+    }
+}
+
+/// Accepted values for `max_concurrent_downloads`.
+pub const CONCURRENT_DOWNLOADS_RANGE: std::ops::RangeInclusive<u32> = 1..=64;
 
 /// Memory settings outside this range are refused, in megabytes.
 pub const MEMORY_RANGE_MB: std::ops::RangeInclusive<u32> = 512..=65536;
@@ -121,6 +140,8 @@ mod tests {
             advanced_rendering: false,
             default_memory_mb: Some(6144),
             java_overrides: BTreeMap::from([(21, PathBuf::from("/usr/lib/jvm/java-21/bin/java"))]),
+            max_concurrent_downloads: 4,
+            download_limit_kib: Some(2048),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);

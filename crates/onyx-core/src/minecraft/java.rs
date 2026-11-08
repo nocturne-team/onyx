@@ -153,7 +153,7 @@ pub async fn ensure_runtime(
             RuntimeFile::Link { target } => links.push((path, target.clone())),
         }
     }
-    download::download_all(http, downloads, progress, download::DEFAULT_CONCURRENCY).await?;
+    download::download_all(http, downloads, progress, download::concurrency()).await?;
     finish_files(&executables, &links)?;
 
     let marker = Marker {

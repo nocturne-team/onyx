@@ -302,7 +302,7 @@ pub async fn install(
             })
         })
         .collect();
-    download::download_all(http, downloads, progress, download::DEFAULT_CONCURRENCY).await?;
+    download::download_all(http, downloads, progress, download::concurrency()).await?;
 
     run_processors(meta, &profile, vanilla, &installer, &dir, java).await?;
 

@@ -72,6 +72,11 @@ impl Client {
             .await
     }
 
+    /// Every category tag, for all project types.
+    pub async fn categories(&self, cache: Option<CachePolicy>) -> Result<Vec<Category>, ApiError> {
+        self.get_cached("/v2/tag/category", &[], None, cache).await
+    }
+
     /// The user the token belongs to. Never cached: it's how we check a token still works.
     pub async fn current_user(&self, token: &str) -> Result<User, ApiError> {
         self.get_cached("/v2/user", &[], Some(token), None).await

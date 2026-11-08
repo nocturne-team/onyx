@@ -6,6 +6,7 @@ pub mod cache;
 pub mod config;
 pub mod content;
 pub mod download;
+pub mod icons;
 pub mod instance;
 pub mod minecraft;
 pub mod modpack;

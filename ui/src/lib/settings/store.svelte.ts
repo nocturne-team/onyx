@@ -10,6 +10,10 @@ export interface Settings {
   defaultMemoryMb: number | null;
   /** Java binary per Java major version; missing means Mojang's runtime. */
   javaOverrides: Record<string, string>;
+  /** Files downloaded at once during installs, 1 to 64. */
+  maxConcurrentDownloads: number;
+  /** App-wide download speed cap in KiB/s; null is unlimited. */
+  downloadLimitKib: number | null;
 }
 
 export interface AppInfo {
@@ -23,6 +27,8 @@ export const settings = $state<Settings>({
   advancedRendering: true,
   defaultMemoryMb: null,
   javaOverrides: {},
+  maxConcurrentDownloads: 10,
+  downloadLimitKib: null,
 });
 
 export async function loadSettings() {

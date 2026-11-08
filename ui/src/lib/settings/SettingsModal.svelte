@@ -33,6 +33,25 @@
     { id: "system", label: "Sync with system", preview: "dark" },
   ];
 
+  // Speed cap presets in KiB/s, picked with a slider.
+  const speedSteps = [256, 512, 1024, 2048, 5120, 10240, 25600, 51200];
+  // svelte-ignore state_referenced_locally
+  let speedIndex = $state(nearestSpeed(settings.downloadLimitKib ?? 5120));
+  // svelte-ignore state_referenced_locally
+  let concurrentDraft = $state(settings.maxConcurrentDownloads);
+
+  function nearestSpeed(kib: number) {
+    let best = 0;
+    speedSteps.forEach((step, i) => {
+      if (Math.abs(step - kib) < Math.abs(speedSteps[best] - kib)) best = i;
+    });
+    return best;
+  }
+
+  function speedLabel(kib: number) {
+    return kib >= 1024 ? `${(kib / 1024).toFixed(kib % 1024 === 0 ? 0 : 1)} MB/s` : `${kib} KB/s`;
+  }
+
   let active = $state<(typeof sections)[number]["id"]>("appearance");
   const info = appInfo();
 
@@ -154,6 +173,57 @@
               onChange={(value) => updateSettings({ defaultMemoryMb: value })}
             />
           {/await}
+        {:else if active === "resources"}
+          <h3>Maximum concurrent downloads</h3>
+          <p class="hint">
+            How many files Onyx downloads at the same time when installing games, mods and modpacks.
+          </p>
+          <div class="slider">
+            <input
+              type="range"
+              min="1"
+              max="32"
+              bind:value={concurrentDraft}
+              onchange={() => updateSettings({ maxConcurrentDownloads: concurrentDraft })}
+              aria-label="Maximum concurrent downloads"
+            />
+            <strong>{concurrentDraft}</strong>
+          </div>
+
+          <div class="toggle-row spaced">
+            <div>
+              <h3>Limit download speed</h3>
+              <p class="hint">
+                Caps the total speed of all downloads, so installs don't take over your connection.
+              </p>
+            </div>
+            <button
+              class="switch"
+              role="switch"
+              aria-label="Limit download speed"
+              aria-checked={settings.downloadLimitKib !== null}
+              onclick={() =>
+                updateSettings({
+                  downloadLimitKib:
+                    settings.downloadLimitKib === null ? speedSteps[speedIndex] : null,
+                })}
+            >
+              <span></span>
+            </button>
+          </div>
+          {#if settings.downloadLimitKib !== null}
+            <div class="slider">
+              <input
+                type="range"
+                min="0"
+                max={speedSteps.length - 1}
+                bind:value={speedIndex}
+                onchange={() => updateSettings({ downloadLimitKib: speedSteps[speedIndex] })}
+                aria-label="Download speed limit"
+              />
+              <strong>{speedLabel(speedSteps[speedIndex])}</strong>
+            </div>
+          {/if}
         {:else}
           <p class="hint">Not built yet.</p>
         {/if}
@@ -367,6 +437,26 @@
     gap: 24px;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .toggle-row.spaced {
+    margin-top: 28px;
+  }
+
+  .slider {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .slider input {
+    flex: 1;
+    accent-color: var(--brand);
+  }
+
+  .slider strong {
+    min-width: 72px;
+    text-align: right;
   }
 
   .switch {

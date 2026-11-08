@@ -63,7 +63,7 @@ pub async fn install_version(
         });
     }
 
-    download::download_all(http, downloads, progress, download::DEFAULT_CONCURRENCY).await?;
+    download::download_all(http, downloads, progress, download::concurrency()).await?;
 
     extract_natives(meta, version, env).await?;
     if index.is_virtual {

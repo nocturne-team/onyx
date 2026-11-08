@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Search } from "@lucide/svelte";
-  import { ArrowLeft, Gamepad2, Lock, Tag } from "@lucide/svelte";
+  import { ArrowLeft, Filter, Gamepad2, Lock, Tag, X } from "@lucide/svelte";
+  import CategoryFilter from "../components/CategoryFilter.svelte";
   import InstallButton from "../components/InstallButton.svelte";
   import InstanceIcon from "../components/InstanceIcon.svelte";
   import ProjectRow from "../components/ProjectRow.svelte";
@@ -59,8 +60,18 @@
     debounce = setTimeout(runSearch, 300);
   }
 
+  let showCategories = $state(false);
+
+  function setCategories(selected: string[]) {
+    browse.categories = selected;
+    runSearch();
+  }
+
   function setType(id: ProjectType) {
+    if (browse.projectType === id) return;
     browse.projectType = id;
+    // Each project type has its own categories.
+    browse.categories = [];
     // Loader names differ between mods and shaders.
     if (!loaderOptions[id]?.some(([value]) => value === browse.loader)) browse.loader = "";
     runSearch();
@@ -113,6 +124,20 @@
         <option value={sort.id}>Sort: {sort.label}</option>
       {/each}
     </select>
+    <button
+      class="category-toggle"
+      class:active={showCategories || browse.categories.length > 0}
+      aria-expanded={showCategories}
+      onclick={() => (showCategories = !showCategories)}
+    >
+      <Filter size={16} />
+      Categories{browse.categories.length ? ` (${browse.categories.length})` : ""}
+    </button>
+    {#if browse.categories.length}
+      <button class="clear" title="Clear categories" onclick={() => setCategories([])}>
+        <X size={16} />
+      </button>
+    {/if}
   </div>
 
   {#if !browse.target}
@@ -142,7 +167,6 @@
     </div>
   {/if}
 
-
   <div class="tabs" role="tablist">
     {#each types.filter((t) => !browse.target || t.id !== "modpack") as type (type.id)}
       <button
@@ -155,6 +179,14 @@
       </button>
     {/each}
   </div>
+
+  {#if showCategories}
+    <CategoryFilter
+      projectType={browse.projectType}
+      selected={browse.categories}
+      onChange={setCategories}
+    />
+  {/if}
 
   {#if browse.error}
     <div class="note">Search failed: {browse.error}</div>
@@ -225,6 +257,28 @@
     border-radius: var(--radius);
     color: var(--text);
     font: inherit;
+  }
+
+  .category-toggle,
+  .clear {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .clear {
+    padding: 0 12px;
+  }
+
+  .category-toggle.active {
+    border-color: var(--brand);
+    color: var(--brand);
   }
 
   .tabs {

@@ -140,6 +140,7 @@
     browse.query = query;
     browse.target = null;
     browse.projectType = "modpack";
+    browse.categories = [];
     runSearch();
     nav.page = "browse";
     onClose();
@@ -161,6 +162,7 @@
     browse.target = null;
     browse.query = "";
     browse.projectType = "modpack";
+    browse.categories = [];
     runSearch();
     nav.page = "browse";
     onClose();

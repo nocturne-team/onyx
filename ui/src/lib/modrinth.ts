@@ -1,4 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import type { CardProject } from "./components/ProjectCard.svelte";
 
 export type ProjectType = "mod" | "modpack" | "resourcepack" | "shader";
@@ -13,6 +13,8 @@ export interface SearchParams {
   projectType?: ProjectType;
   loaders?: string[];
   gameVersions?: string[];
+  /** All of these must match. */
+  categories?: string[];
   index?: SearchIndex;
   offset?: number;
   limit?: number;
@@ -130,4 +132,33 @@ export function pageAsHit(page: ProjectPage): SearchHit {
     featuredGallery: null,
     gallery: [],
   };
+}
+
+/** Mirrors `onyx_core::modrinth::Category`. `icon` is untrusted SVG markup. */
+export interface Category {
+  name: string;
+  icon: string;
+  projectType: string;
+  header: string;
+}
+
+let categoryList: Promise<Category[]> | null = null;
+
+/** All category tags, fetched once per session (and cached on disk for an hour). */
+export function categories(): Promise<Category[]> {
+  if (!isTauri()) return Promise.resolve([]);
+  categoryList ??= invoke<Category[]>("categories").catch((e) => {
+    categoryList = null;
+    throw e;
+  });
+  return categoryList;
+}
+
+/**
+ * A Modrinth CDN image through Onyx's disk cache (the `onyx-icon` scheme),
+ * so it shows without a network round trip after the first time.
+ */
+export function cachedIcon(url: string): string {
+  if (!isTauri() || !url.startsWith("https://cdn.modrinth.com/")) return url;
+  return convertFileSrc(url, "onyx-icon");
 }

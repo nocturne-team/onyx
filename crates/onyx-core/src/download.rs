@@ -5,9 +5,9 @@
 //! like a finished one.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use sha1::{Digest, Sha1};
@@ -15,8 +15,66 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
-pub const DEFAULT_CONCURRENCY: usize = 16;
+pub const DEFAULT_CONCURRENCY: usize = 10;
 const ATTEMPTS: u32 = 3;
+
+static CONCURRENCY: AtomicUsize = AtomicUsize::new(DEFAULT_CONCURRENCY);
+/// Bytes per second across every download in the process; 0 is unlimited.
+static RATE_LIMIT: AtomicU64 = AtomicU64::new(0);
+static BUCKET: Mutex<Option<Bucket>> = Mutex::new(None);
+
+/// Sets the app-wide download limits, usually from `Settings`. Takes effect
+/// for chunks and batches started after the call.
+pub fn set_limits(concurrency: usize, bytes_per_second: Option<u64>) {
+    CONCURRENCY.store(concurrency.max(1), Ordering::Relaxed);
+    RATE_LIMIT.store(bytes_per_second.unwrap_or(0), Ordering::Relaxed);
+}
+
+/// How many files `download_all` fetches at once, from `set_limits`.
+pub fn concurrency() -> usize {
+    CONCURRENCY.load(Ordering::Relaxed)
+}
+
+/// Token bucket shared by all downloads. Tokens can go negative: a task that
+/// overdraws sleeps until the debt is paid back, and later tasks queue behind it.
+struct Bucket {
+    tokens: f64,
+    refilled: Instant,
+}
+
+/// How long to wait after receiving `bytes` so the total stays under `rate`.
+fn take_tokens(bucket: &mut Option<Bucket>, rate: u64, bytes: u64, now: Instant) -> Duration {
+    let rate = rate as f64;
+    let bucket = bucket.get_or_insert(Bucket {
+        tokens: rate,
+        refilled: now,
+    });
+    let elapsed = now.saturating_duration_since(bucket.refilled).as_secs_f64();
+    // Allow at most one second of burst.
+    bucket.tokens = (bucket.tokens + elapsed * rate).min(rate) - bytes as f64;
+    bucket.refilled = now;
+    if bucket.tokens >= 0.0 {
+        Duration::ZERO
+    } else {
+        Duration::from_secs_f64(-bucket.tokens / rate)
+    }
+}
+
+async fn throttle(bytes: usize) {
+    let rate = RATE_LIMIT.load(Ordering::Relaxed);
+    if rate == 0 {
+        return;
+    }
+    let wait = take_tokens(
+        &mut BUCKET.lock().unwrap(),
+        rate,
+        bytes as u64,
+        Instant::now(),
+    );
+    if !wait.is_zero() {
+        tokio::time::sleep(wait).await;
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Download {
@@ -208,6 +266,7 @@ pub async fn fetch(http: &reqwest::Client, item: &Download) -> Result<(), Downlo
     let mut hasher = Sha1::new();
     let result = async {
         while let Some(chunk) = response.chunk().await.map_err(http_err)? {
+            throttle(chunk.len()).await;
             hasher.update(&chunk);
             file.write_all(&chunk)
                 .await
@@ -322,6 +381,31 @@ mod tests {
         .unwrap_err();
         assert!(matches!(err, DownloadError::HashMismatch { .. }));
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn bucket_allows_a_burst_then_paces() {
+        let start = Instant::now();
+        let mut bucket = None;
+        // One second's worth goes through at once.
+        assert_eq!(take_tokens(&mut bucket, 1000, 1000, start), Duration::ZERO);
+        // Overdrawing by 500 bytes costs half a second.
+        assert_eq!(
+            take_tokens(&mut bucket, 1000, 500, start),
+            Duration::from_millis(500)
+        );
+        // Another task arriving right after waits for both debts.
+        assert_eq!(
+            take_tokens(&mut bucket, 1000, 500, start),
+            Duration::from_secs(1)
+        );
+        // Idle time refills, but never past one second's worth.
+        let later = start + Duration::from_secs(60);
+        assert_eq!(take_tokens(&mut bucket, 1000, 1000, later), Duration::ZERO);
+        assert_eq!(
+            take_tokens(&mut bucket, 1000, 100, later),
+            Duration::from_millis(100)
+        );
     }
 
     #[tokio::test]

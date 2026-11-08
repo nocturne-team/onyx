@@ -4,17 +4,19 @@
 mod account;
 mod commands;
 mod content;
+mod icons;
 mod instances;
 mod minecraft_account;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use account::Session;
 use onyx_core::auth::Accounts;
 use onyx_core::auth::microsoft::MinecraftSession;
 use onyx_core::cache::ResponseCache;
+use onyx_core::icons::IconCache;
 use onyx_core::minecraft::MetaDirs;
 use onyx_core::{Settings, modrinth, paths};
 use tokio::sync::oneshot;
@@ -58,6 +60,7 @@ fn main() {
             })
         })
         .unwrap_or_default();
+    settings.apply_download_limits();
 
     let data_dir = paths::data_dir().expect("no home directory to keep Onyx's data in");
     let paths = Paths {
@@ -67,13 +70,20 @@ fn main() {
     };
     let accounts = Accounts::load(&paths.accounts);
 
+    let modrinth = modrinth::Client::new(ResponseCache::new(
+        paths::cache_dir().map(|dir| dir.join("api")),
+    ));
+    let icons = Arc::new(IconCache::new(
+        paths::cache_dir().map(|dir| dir.join("icons")),
+        modrinth.http().clone(),
+    ));
+
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("onyx-icon", icons::protocol(icons))
         .manage(AppState {
             settings: Mutex::new(settings),
             paths,
-            modrinth: modrinth::Client::new(ResponseCache::new(
-                paths::cache_dir().map(|dir| dir.join("api")),
-            )),
+            modrinth,
             session: Mutex::new(None),
             login_cancel: Mutex::new(None),
             accounts: Mutex::new(accounts),
@@ -89,6 +99,7 @@ fn main() {
             commands::get_settings,
             commands::set_settings,
             commands::search,
+            commands::categories,
             commands::project_page,
             commands::project_versions,
             commands::open_external,
@@ -129,6 +140,7 @@ fn main() {
             instances::launch_instance,
             content::install_to_instance,
             content::identify_content,
+            content::cached_content_info,
             content::check_updates,
             content::apply_update,
             content::import_mrpack,

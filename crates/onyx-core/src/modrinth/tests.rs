@@ -47,6 +47,7 @@ fn query_builds_facets_as_and_of_or_groups() {
         project_type: Some(ProjectType::Mod),
         loaders: vec!["fabric".into(), "quilt".into()],
         game_versions: vec!["1.20.1".into()],
+        categories: vec!["decoration".into(), "magic".into()],
         index: SearchIndex::Downloads,
         offset: 40,
         limit: 500,
@@ -62,7 +63,7 @@ fn query_builds_facets_as_and_of_or_groups() {
     assert_eq!(
         get("facets"),
         Some(
-            r#"[["project_type:mod"],["categories:fabric","categories:quilt"],["versions:1.20.1"]]"#
+            r#"[["project_type:mod"],["categories:fabric","categories:quilt"],["versions:1.20.1"],["categories:decoration"],["categories:magic"]]"#
         )
     );
     assert_eq!(get("index"), Some("downloads"));
@@ -344,4 +345,22 @@ async fn project_page_author_from_organization_or_owner() {
     assert_eq!(page.gallery[0].title.as_deref(), Some("Shot"));
     let page = client.project_page("solo", None, None).await.unwrap();
     assert_eq!(page.author.as_deref(), Some("jellysquid3"));
+}
+
+#[tokio::test]
+async fn categories_decode() {
+    let server = MockServer::start().await;
+    Mock::given(path("/v2/tag/category"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"[{"icon":"<svg></svg>","name":"decoration","project_type":"mod","header":"categories"},
+                {"name":"16x","project_type":"resourcepack","header":"resolutions"}]"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = Client::with_base(server.uri(), ResponseCache::new(None));
+    let categories = client.categories(None).await.unwrap();
+    assert_eq!(categories.len(), 2);
+    assert_eq!(categories[0].name, "decoration");
+    assert_eq!(categories[1].icon, "");
+    assert_eq!(categories[1].header, "resolutions");
 }

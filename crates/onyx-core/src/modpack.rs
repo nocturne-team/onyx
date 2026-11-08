@@ -235,7 +235,7 @@ pub async fn install(
     if let Some(old) = installed_index(game_dir) {
         remove_stale_files(&old, index, game_dir)?;
     }
-    download::download_all(http, items, progress, download::DEFAULT_CONCURRENCY).await?;
+    download::download_all(http, items, progress, download::concurrency()).await?;
     let (mrpack, dir) = (mrpack.to_owned(), game_dir.to_owned());
     tokio::task::spawn_blocking(move || extract_overrides(&mrpack, &dir))
         .await

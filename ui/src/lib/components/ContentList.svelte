@@ -14,6 +14,7 @@
   import {
     applyUpdate,
     checkUpdates,
+    cachedContentInfo,
     identifyContent,
     installKey,
     installs,
@@ -21,6 +22,7 @@
     type Update,
   } from "../content.svelte";
   import { instanceById, instances, type ContentFile, type ContentKind } from "../instances.svelte";
+  import { cachedIcon } from "../modrinth";
   import { nav } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browse.svelte";
 
@@ -93,6 +95,14 @@
       error = String(e);
       return;
     }
+    // Last run's result first, so names and icons show right away.
+    if (Object.keys(known).length === 0) {
+      cachedContentInfo(id)
+        .then((cached) => {
+          if (Object.keys(known).length === 0) known = cached;
+        })
+        .catch(() => {});
+    }
     identifyContent(id)
       .then((result) => (known = result))
       .catch((e) => console.warn("couldn't identify mods", e));
@@ -112,6 +122,7 @@
     // So Browse shows what's already here as installed.
     for (const file of Object.values(known)) installs[installKey(id, file.projectId)] = "installed";
     browse.projectType = label.projectType;
+    browse.categories = [];
     browse.query = "";
     runSearch();
     nav.page = "browse";
@@ -203,7 +214,7 @@
     {#each visible as mod (mod.fileName)}
       <div class="row" class:disabled={!mod.enabled}>
         {#if info(mod)?.iconUrl}
-          <img class="icon" src={info(mod)?.iconUrl} alt="" loading="lazy" />
+          <img class="icon" src={cachedIcon(info(mod)?.iconUrl ?? "")} alt="" loading="lazy" />
         {:else}
           <span class="icon"><Package size={20} /></span>
         {/if}

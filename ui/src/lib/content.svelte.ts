@@ -85,6 +85,11 @@ export function canInstallInto(instance: Instance, projectType: string): boolean
   return projectType !== "mod" || instance.loader !== "vanilla";
 }
 
+/** The last `identifyContent` result, read from disk without any network. */
+export function cachedContentInfo(instanceId: string): Promise<Record<string, KnownFile>> {
+  return invoke<Record<string, KnownFile>>("cached_content_info", { id: instanceId });
+}
+
 export function identifyContent(instanceId: string): Promise<Record<string, KnownFile>> {
   return invoke<Record<string, KnownFile>>("identify_content", { id: instanceId });
 }

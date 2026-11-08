@@ -56,6 +56,8 @@ pub struct SearchParams {
     pub loaders: Vec<String>,
     /// Matches any of these (OR), e.g. `1.20.1`.
     pub game_versions: Vec<String>,
+    /// Must have all of these (AND), e.g. `decoration`, `optimization`.
+    pub categories: Vec<String>,
     pub index: SearchIndex,
     pub offset: u32,
     pub limit: u32,
@@ -68,6 +70,7 @@ impl Default for SearchParams {
             project_type: None,
             loaders: Vec::new(),
             game_versions: Vec::new(),
+            categories: Vec::new(),
             index: SearchIndex::default(),
             offset: 0,
             limit: 20,
@@ -99,6 +102,9 @@ impl SearchParams {
                     .collect(),
             );
         }
+        for category in &self.categories {
+            facets.push(vec![format!("categories:{category}")]);
+        }
 
         let mut query = Vec::new();
         if let Some(q) = self
@@ -129,6 +135,19 @@ pub struct SearchResults {
     pub offset: u32,
     pub limit: u32,
     pub total_hits: u32,
+}
+
+/// One entry of `/v2/tag/category`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
+pub struct Category {
+    pub name: String,
+    /// Raw SVG markup from Modrinth. Sanitize before rendering it.
+    #[serde(default)]
+    pub icon: String,
+    pub project_type: String,
+    /// Group it's listed under, e.g. `categories`, `features`, `resolutions`.
+    pub header: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

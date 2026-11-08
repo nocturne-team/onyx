@@ -1,5 +1,5 @@
 use onyx_core::cache::CachePolicy;
-use onyx_core::modrinth::{ProjectPage, SearchParams, SearchResults, Version};
+use onyx_core::modrinth::{Category, ProjectPage, SearchParams, SearchResults, Version};
 use onyx_core::{Settings, config, paths};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
@@ -39,8 +39,14 @@ pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<()
     {
         return Err("memory must be between 512 MB and 64 GB".into());
     }
+    if !onyx_core::settings::CONCURRENT_DOWNLOADS_RANGE.contains(&settings.max_concurrent_downloads)
+        || settings.download_limit_kib == Some(0)
+    {
+        return Err("invalid download limits".into());
+    }
     let path = paths::settings_file().ok_or("could not find a data directory")?;
     settings.save(&path).map_err(|e| e.to_string())?;
+    settings.apply_download_limits();
     *state.settings.lock().unwrap() = settings;
     Ok(())
 }
@@ -73,6 +79,16 @@ pub async fn search(
     state
         .modrinth
         .search(&params, cache.into())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Category tags for the Browse filters. Rarely change, so cached for an hour.
+#[tauri::command]
+pub async fn categories(state: State<'_, AppState>) -> Result<Vec<Category>, String> {
+    state
+        .modrinth
+        .categories(Some(CachePolicy::LONG))
         .await
         .map_err(|e| e.to_string())
 }
