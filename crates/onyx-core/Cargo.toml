@@ -12,7 +12,7 @@ getrandom = "0.4.3"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query", "form", "charset", "http2"] }
 serde.workspace = true
 serde_json.workspace = true
-sha1 = "0.10"
+sha1 = "0.11"
 sha2 = "0.11"
 thiserror.workspace = true
 tokio = { version = "1.54.1", features = ["net", "io-util", "time", "sync", "macros", "rt", "fs", "process"] }
