@@ -9,8 +9,8 @@ Don't forget to tick the boxes in this file!
 
 - [x] Cache mod icons? (currently it takes a few seconds for them to appear on the mod list screen)
 - [ ] Bring the UI closer to Modrinth's App
-- [ ] Pass over the dependencies and check if we can remove any
-- [ ] Optimize pass + make the app more lightweight
+- [x] Pass over the dependencies and check if we can remove any
+- [x] Optimize pass + make the app more lightweight
 - [ ] Forge before 1.13 (old installer format with `versionInfo`)
 - [ ] Selective prism launcher instance import
 - [x] Discord Rich Presence
