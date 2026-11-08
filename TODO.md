@@ -2,7 +2,7 @@
 
 ## Next
 
-- [ ] Project page when clicking a Browse result or Home card
+- [ ] Project page: install a specific version from the Versions tab; versions of your own non-public projects (the versions call doesn't send the token yet)
 
 ## Later
 

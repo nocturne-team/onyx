@@ -3,11 +3,20 @@
   import { compactNumber, relativeTime } from "../format";
   import type { Snippet } from "svelte";
   import type { SearchHit } from "../modrinth";
+  import { openProject } from "../navigation.svelte";
 
   let { hit, actions }: { hit: SearchHit; actions?: Snippet } = $props();
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      openProject(hit.projectId);
+    }
+  }
 </script>
 
-<article class="row">
+<!-- Buttons inside (Install) stop their clicks from reaching the row. -->
+<div class="row" role="link" tabindex="0" onclick={() => openProject(hit.projectId)} {onkeydown}>
   {#if hit.iconUrl}
     <img class="icon" src={hit.iconUrl} alt="" loading="lazy" />
   {:else}
@@ -35,9 +44,17 @@
     <span title="Followers"><Heart size={15} />{compactNumber(hit.follows)}</span>
     <span title="Updated"><CalendarDays size={15} />{relativeTime(new Date(hit.dateModified))}</span>
   </div>
-</article>
+</div>
 
 <style>
+  .row {
+    cursor: pointer;
+  }
+
+  .row:hover {
+    outline: 2px solid var(--border);
+  }
+
   .row {
     display: flex;
     gap: 16px;

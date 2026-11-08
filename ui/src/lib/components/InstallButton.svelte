@@ -35,6 +35,10 @@
   }
 </script>
 
+<!-- Rows and cards around this open the project page on click; keep
+     install clicks (and the popup) from reaching them. -->
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<span class="wrap" onclick={(e) => e.stopPropagation()}>
 {#if targetState === "installed"}
   <span class="button done"><Check size={16} /> Installed</span>
 {:else if targetState === "installing" || packBusy}
@@ -53,8 +57,13 @@
 {#if popupOpen}
   <InstallPopup {hit} onClose={() => (popupOpen = false)} />
 {/if}
+</span>
 
 <style>
+  .wrap {
+    display: contents;
+  }
+
   .button {
     display: flex;
     align-items: center;

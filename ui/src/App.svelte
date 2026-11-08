@@ -7,6 +7,7 @@
   import Browse from "./lib/pages/Browse.svelte";
   import Library from "./lib/pages/Library.svelte";
   import Instance from "./lib/pages/Instance.svelte";
+  import Project from "./lib/pages/Project.svelte";
   import CreateInstanceModal from "./lib/components/CreateInstanceModal.svelte";
   import { loadSettings, settings } from "./lib/settings/store.svelte";
   import { pageTitles } from "./lib/nav";
@@ -30,7 +31,9 @@
   const title = $derived(
     nav.page === "instance"
       ? (instanceById(nav.instanceId)?.name ?? "Instance")
-      : nav.page === "browse" && browse.target
+      : nav.page === "project"
+        ? "Project"
+        : nav.page === "browse" && browse.target
         ? `${browse.target.name} › Browse content`
         : pageTitles[nav.page],
   );
@@ -71,6 +74,8 @@
         <Browse />
       {:else if nav.page === "library"}
         <Library onCreateInstance={() => (createOpen = true)} />
+      {:else if nav.page === "project" && nav.projectId}
+        <Project id={nav.projectId} />
       {:else if nav.instanceId}
         {#key nav.instanceId}
           <Instance id={nav.instanceId} />

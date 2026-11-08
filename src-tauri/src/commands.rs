@@ -1,8 +1,9 @@
 use onyx_core::cache::CachePolicy;
-use onyx_core::modrinth::{SearchParams, SearchResults};
+use onyx_core::modrinth::{ProjectPage, SearchParams, SearchResults, Version};
 use onyx_core::{Settings, config, paths};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::AppState;
 
@@ -64,5 +65,52 @@ pub async fn search(
         .modrinth
         .search(&params, cache.into())
         .await
+        .map_err(|e| e.to_string())
+}
+
+fn modrinth_token(state: &AppState) -> Option<String> {
+    state
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.token.access_token.clone())
+}
+
+/// A project's page, as the signed-in user when there is one (so their own
+/// drafts and private projects open too). Cached in memory for 5 minutes.
+#[tauri::command]
+pub async fn project_page(state: State<'_, AppState>, id: String) -> Result<ProjectPage, String> {
+    let token = modrinth_token(&state);
+    state
+        .modrinth
+        .project_page(&id, token.as_deref(), Some(CachePolicy::SHORT))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// All versions of a project, newest first. Cached for 5 minutes.
+#[tauri::command]
+pub async fn project_versions(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<Version>, String> {
+    state
+        .modrinth
+        .project_versions(&id, &[], &[], Some(CachePolicy::SHORT))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Opens a web link in the user's browser. Only http(s), since links come
+/// from project descriptions written by anyone.
+#[tauri::command]
+pub fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = tauri::Url::parse(&url).map_err(|_| "not a valid link".to_owned())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("only web links can be opened".into());
+    }
+    app.opener()
+        .open_url(parsed.as_str(), None::<&str>)
         .map_err(|e| e.to_string())
 }

@@ -18,10 +18,27 @@
   import { compactNumber, relativeTime } from "../format";
 
   /** No project means a loading skeleton. */
-  let { project }: { project?: CardProject } = $props();
+  let { project, onclick }: { project?: CardProject; onclick?: () => void } = $props();
+
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onclick?.();
+    }
+  }
 </script>
 
-<article class="card" class:skeleton={!project}>
+<!-- Only focusable when clickable, which Svelte can't see through the conditional role. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+  class="card"
+  class:skeleton={!project}
+  class:clickable={project && onclick}
+  role={project && onclick ? "link" : undefined}
+  tabindex={project && onclick ? 0 : undefined}
+  onclick={() => project && onclick?.()}
+  {onkeydown}
+>
   <div class="head">
     {#if project?.iconUrl}
       <img class="icon" src={project.iconUrl} alt="" loading="lazy" />
@@ -64,9 +81,17 @@
       <span class="bar"></span>
     {/if}
   </p>
-</article>
+</div>
 
 <style>
+  .card.clickable {
+    cursor: pointer;
+  }
+
+  .card.clickable:hover {
+    outline: 2px solid var(--border);
+  }
+
   .card {
     display: flex;
     flex-direction: column;

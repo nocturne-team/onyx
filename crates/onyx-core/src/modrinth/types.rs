@@ -190,6 +190,10 @@ pub struct GalleryImage {
     pub url: String,
     #[serde(default)]
     pub featured: bool,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// A full project from `/project` and `/user/{id}/projects`.
@@ -338,4 +342,72 @@ pub struct Dependency {
     pub file_name: Option<String>,
     /// `required`, `optional`, `incompatible` or `embedded`.
     pub dependency_type: String,
+}
+
+/// Everything the project page shows, from `/v2/project/{id}`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
+pub struct ProjectPage {
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    /// Markdown written by the project's authors. Untrusted: sanitize before
+    /// rendering.
+    #[serde(default)]
+    pub body: String,
+    pub project_type: String,
+    pub icon_url: Option<String>,
+    pub color: Option<u32>,
+    pub downloads: u64,
+    pub followers: u64,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
+    pub published: String,
+    pub updated: String,
+    pub license: Option<License>,
+    pub source_url: Option<String>,
+    pub issues_url: Option<String>,
+    pub wiki_url: Option<String>,
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub donation_urls: Vec<DonationUrl>,
+    #[serde(default)]
+    pub gallery: Vec<GalleryImage>,
+    pub team: String,
+    pub organization: Option<String>,
+    /// Filled in by us: the owning organization or the team owner.
+    #[serde(default)]
+    pub author: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct License {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DonationUrl {
+    pub platform: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct TeamMember {
+    pub user: User,
+    #[serde(default)]
+    pub is_owner: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct OrganizationName {
+    pub name: String,
 }

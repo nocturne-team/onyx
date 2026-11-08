@@ -194,6 +194,46 @@ impl Client {
         .await
     }
 
+    /// A project's full page, with `author` set to the owning organization
+    /// or the team owner (best effort). With a token, the user's own
+    /// non-public projects work too; don't persist that cache.
+    pub async fn project_page(
+        &self,
+        id: &str,
+        token: Option<&str>,
+        cache: Option<CachePolicy>,
+    ) -> Result<ProjectPage, ApiError> {
+        debug_assert!(token.is_none() || cache.is_none_or(|c| !c.persist));
+        let mut page: ProjectPage = self
+            .get_cached(&format!("/v2/project/{id}"), &[], token, cache)
+            .await?;
+        page.author = match &page.organization {
+            Some(org) => self
+                .get_cached::<OrganizationName>(
+                    &format!("/v3/organization/{org}"),
+                    &[],
+                    None,
+                    cache,
+                )
+                .await
+                .ok()
+                .map(|o| o.name),
+            None => None,
+        };
+        if page.author.is_none() {
+            let members: Vec<TeamMember> = self
+                .get_cached(&format!("/v2/project/{id}/members"), &[], token, cache)
+                .await
+                .unwrap_or_default();
+            page.author = members
+                .iter()
+                .find(|m| m.is_owner)
+                .or_else(|| members.first())
+                .map(|m| m.user.username.clone());
+        }
+        Ok(page)
+    }
+
     pub async fn version(&self, id: &str, cache: Option<CachePolicy>) -> Result<Version, ApiError> {
         self.get_cached(&format!("/v2/version/{id}"), &[], None, cache)
             .await

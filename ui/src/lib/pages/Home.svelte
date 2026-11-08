@@ -3,7 +3,7 @@
   import InstanceCard from "../components/InstanceCard.svelte";
   import ProjectCard from "../components/ProjectCard.svelte";
   import { instances } from "../instances.svelte";
-  import { nav } from "../navigation.svelte";
+  import { nav, openProject } from "../navigation.svelte";
   import { search, toCardProject, type ProjectType } from "../modrinth";
 
   const PER_SECTION = 6;
@@ -50,7 +50,7 @@
       {:then results}
         <div class="grid">
           {#each results.hits as hit (hit.projectId)}
-            <ProjectCard project={toCardProject(hit)} />
+            <ProjectCard project={toCardProject(hit)} onclick={() => openProject(hit.projectId)} />
           {/each}
         </div>
       {:catch error}

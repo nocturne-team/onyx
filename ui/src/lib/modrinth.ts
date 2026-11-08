@@ -62,3 +62,72 @@ export function toCardProject(hit: SearchHit): CardProject {
     updated: new Date(hit.dateModified),
   };
 }
+
+/** Mirrors `onyx_core::modrinth::ProjectPage`. */
+export interface ProjectPage {
+  id: string;
+  slug: string | null;
+  title: string;
+  description: string;
+  /** Untrusted Markdown; render only through `renderMarkdown`. */
+  body: string;
+  projectType: string;
+  iconUrl: string | null;
+  color: number | null;
+  downloads: number;
+  followers: number;
+  categories: string[];
+  loaders: string[];
+  gameVersions: string[];
+  published: string;
+  updated: string;
+  license: { id: string; name: string; url: string | null } | null;
+  sourceUrl: string | null;
+  issuesUrl: string | null;
+  wikiUrl: string | null;
+  discordUrl: string | null;
+  donationUrls: { platform: string; url: string }[];
+  gallery: { url: string; featured: boolean; title: string | null; description: string | null }[];
+  author: string | null;
+}
+
+/** Mirrors `onyx_core::modrinth::Version` (the fields shown). */
+export interface ProjectVersion {
+  id: string;
+  name: string;
+  versionNumber: string;
+  versionType: "release" | "beta" | "alpha";
+  gameVersions: string[];
+  loaders: string[];
+  datePublished: string;
+  files: { filename: string; size: number; primary: boolean }[];
+}
+
+export function projectPage(id: string): Promise<ProjectPage> {
+  return invoke<ProjectPage>("project_page", { id });
+}
+
+export function projectVersions(id: string): Promise<ProjectVersion[]> {
+  return invoke<ProjectVersion[]>("project_versions", { id });
+}
+
+/** What the Install button needs from a project, shaped like a search hit. */
+export function pageAsHit(page: ProjectPage): SearchHit {
+  return {
+    projectId: page.id,
+    slug: page.slug,
+    title: page.title,
+    description: page.description,
+    projectType: page.projectType,
+    author: page.author ?? "",
+    iconUrl: page.iconUrl,
+    color: page.color,
+    downloads: page.downloads,
+    follows: page.followers,
+    dateModified: page.updated,
+    displayCategories: page.categories,
+    versions: page.gameVersions,
+    featuredGallery: null,
+    gallery: [],
+  };
+}

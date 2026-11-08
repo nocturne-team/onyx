@@ -297,3 +297,51 @@ async fn all_user_projects_merges_organization_projects() {
     );
     assert_eq!(projects[0].title, "Bedbugs");
 }
+
+#[tokio::test]
+async fn project_page_author_from_organization_or_owner() {
+    let server = MockServer::start().await;
+    let project = |organization: serde_json::Value| {
+        serde_json::json!({
+            "id": "AANobbMI", "slug": "sodium", "title": "Sodium", "description": "Fast",
+            "body": "# Sodium", "project_type": "mod", "icon_url": null, "color": null,
+            "downloads": 1, "followers": 2, "published": "2021-01-03T00:00:00Z",
+            "updated": "2026-11-08T00:00:00Z", "license": {"id": "MIT", "name": "MIT", "url": null},
+            "source_url": null, "issues_url": null, "wiki_url": null, "discord_url": null,
+            "gallery": [{"url": "https://cdn.modrinth.com/x.png", "featured": true, "title": "Shot"}],
+            "team": "team1", "organization": organization
+        })
+    };
+    Mock::given(method("GET"))
+        .and(path("/v2/project/withorg"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project("org1".into())))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v3/organization/org1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"name": "CaffeineMC"})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/project/solo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project(serde_json::Value::Null)))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/project/solo/members"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"user": {"id": "a", "username": "helper", "avatar_url": null}, "is_owner": false},
+            {"user": {"id": "b", "username": "jellysquid3", "avatar_url": null}, "is_owner": true}
+        ])))
+        .mount(&server)
+        .await;
+
+    let client = Client::with_base(server.uri(), ResponseCache::new(None));
+    let page = client.project_page("withorg", None, None).await.unwrap();
+    assert_eq!(page.author.as_deref(), Some("CaffeineMC"));
+    assert_eq!(page.gallery[0].title.as_deref(), Some("Shot"));
+    let page = client.project_page("solo", None, None).await.unwrap();
+    assert_eq!(page.author.as_deref(), Some("jellysquid3"));
+}
