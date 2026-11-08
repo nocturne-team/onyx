@@ -17,7 +17,7 @@ sha2 = "0.10"
 thiserror.workspace = true
 tokio = { version = "1.54.1", features = ["net", "io-util", "time", "sync", "macros", "rt", "fs", "process"] }
 tracing.workspace = true
-zip = { version = "7.3.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.4.0", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
