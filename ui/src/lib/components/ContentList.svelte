@@ -1,7 +1,25 @@
 <script lang="ts">
-  import { Compass, FolderOpen, Inbox, Package, RefreshCw, Search, Trash2 } from "@lucide/svelte";
+  import {
+    ArrowUpCircle,
+    Compass,
+    FolderOpen,
+    Inbox,
+    LoaderCircle,
+    Package,
+    RefreshCw,
+    Search,
+    Trash2,
+  } from "@lucide/svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { identifyContent, installKey, installs, type KnownFile } from "../content.svelte";
+  import {
+    applyUpdate,
+    checkUpdates,
+    identifyContent,
+    installKey,
+    installs,
+    type KnownFile,
+    type Update,
+  } from "../content.svelte";
   import { instanceById, instances, type ContentFile, type ContentKind } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browse.svelte";
@@ -29,6 +47,42 @@
   /** Modrinth info by "<folder>/<file name>"; filled in after the list shows. */
   let known = $state<Record<string, KnownFile>>({});
   let error = $state<string | null>(null);
+  /** Available updates by "<folder>/<file name>". */
+  let updates = $state<Record<string, Update>>({});
+  let updating = $state<Set<string>>(new Set());
+
+  // Updates need the network, so they're checked when the list opens and on
+  // Refresh, not on every window focus.
+  async function findUpdates() {
+    try {
+      const list = await checkUpdates(id);
+      updates = Object.fromEntries(list.map((u) => [u.key, u]));
+    } catch (e) {
+      console.warn("couldn't check for updates", e);
+    }
+  }
+
+  const update = (mod: ContentFile) => updates[`${kind}/${mod.fileName}`];
+  const pending = $derived(
+    (mods ?? []).filter((m) => update(m) && !updating.has(m.fileName)),
+  );
+
+  async function runUpdates(targets: ContentFile[]) {
+    updating = new Set([...updating, ...targets.map((m) => m.fileName)]);
+    for (const mod of targets) {
+      const available = update(mod);
+      if (!available) continue;
+      try {
+        await applyUpdate(id, available);
+        delete updates[available.key];
+      } catch (e) {
+        error = String(e);
+      }
+    }
+    updating = new Set([...updating].filter((name) => !targets.some((m) => m.fileName === name)));
+    await load();
+    findUpdates();
+  }
   let filter = $state("");
 
   async function load() {
@@ -76,6 +130,7 @@
     mods = null;
     filter = "";
     load();
+    findUpdates();
     // Pick up jars dropped into the folder while Onyx is open.
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
@@ -127,7 +182,19 @@
       <Search size={16} />
       <input placeholder="Search {mods.length} {mods.length === 1 ? label.one : label.many}..." bind:value={filter} />
     </div>
-    <button class="icon-button" title="Refresh" onclick={load}><RefreshCw size={17} /></button>
+    {#if pending.length > 0}
+      <button class="update-all" onclick={() => runUpdates(pending)}>
+        <ArrowUpCircle size={17} /> Update all ({pending.length})
+      </button>
+    {/if}
+    <button
+      class="icon-button"
+      title="Refresh and check for updates"
+      onclick={() => {
+        load();
+        findUpdates();
+      }}><RefreshCw size={17} /></button
+    >
     <button class="secondary" onclick={openFolder}><FolderOpen size={17} /> Open folder</button>
     <button class="primary" onclick={browseContent}><Compass size={17} /> Browse content</button>
   </div>
@@ -147,6 +214,18 @@
               .join(" · ")}</span>
           {#if mod.description && !info(mod)}<span class="muted">{mod.description}</span>{/if}
         </div>
+        {#if updating.has(mod.fileName)}
+          <span class="updating"><LoaderCircle size={16} class="spin" /> Updating</span>
+        {:else if update(mod)}
+          <button
+            class="update"
+            title="Update {update(mod)?.current} to {update(mod)?.latest.versionNumber}"
+            onclick={() => runUpdates([mod])}
+          >
+            <ArrowUpCircle size={16} />
+            {update(mod)?.latest.versionNumber}
+          </button>
+        {/if}
         <button
           class="switch"
           class:on={mod.enabled}
@@ -310,6 +389,45 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .update-all,
+  .update {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-sm);
+    background: var(--brand-highlight);
+    color: var(--brand);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .update-all {
+    height: 38px;
+    padding: 0 14px;
+  }
+
+  .update {
+    max-width: 220px;
+    height: 32px;
+    padding: 0 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .update-all:hover,
+  .update:hover {
+    background: var(--brand-bg);
+    color: var(--brand-text);
+  }
+
+  .updating {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
   }
 
   .switch {

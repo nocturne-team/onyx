@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use onyx_core::cache::CachePolicy;
-use onyx_core::content::{self, InstalledFile, Target};
+use onyx_core::content::{self, InstalledFile, Target, Update};
 use onyx_core::download::{self, Download, Progress};
 use onyx_core::instance::{self, Instance, NewInstance};
 use onyx_core::modpack::{self, Index};
@@ -43,6 +43,40 @@ pub async fn install_to_instance(
         game_version: &instance.game_version,
     };
     content::install_project(&state.modrinth, &target, &project_id, &project_type)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Installed files with newer compatible versions on Modrinth.
+#[tauri::command]
+pub async fn check_updates(state: State<'_, AppState>, id: String) -> Result<Vec<Update>, String> {
+    let root = &state.paths.instances;
+    let instance = instance::load(root, &id).map_err(|e| e.to_string())?;
+    let game_dir = instance::instance_dir(root, &id).map_err(|e| e.to_string())?;
+    let target = Target {
+        game_dir: &game_dir,
+        loader: instance.loader,
+        game_version: &instance.game_version,
+    };
+    content::check_updates(&state.modrinth, &target)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Replaces an installed file (`<folder>/<file name>`) with another version.
+#[tauri::command]
+pub async fn apply_update(
+    state: State<'_, AppState>,
+    id: String,
+    key: String,
+    version_id: String,
+) -> Result<InstalledFile, String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err("Stop the game before updating its content".into());
+    }
+    let game_dir =
+        instance::instance_dir(&state.paths.instances, &id).map_err(|e| e.to_string())?;
+    content::apply_update(&state.modrinth, &game_dir, &key, &version_id)
         .await
         .map_err(|e| e.to_string())
 }

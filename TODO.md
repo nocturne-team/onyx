@@ -2,7 +2,7 @@
 
 ## Next
 
-- [ ] Update installed mods and modpacks
+- [ ] Update modpack instances to a newer pack version (needs the pack's project/version stored on the instance)
 
 ## Later
 

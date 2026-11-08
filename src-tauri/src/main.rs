@@ -121,6 +121,8 @@ fn main() {
             instances::launch_instance,
             content::install_to_instance,
             content::identify_content,
+            content::check_updates,
+            content::apply_update,
             content::import_mrpack,
             content::install_modpack,
         ])

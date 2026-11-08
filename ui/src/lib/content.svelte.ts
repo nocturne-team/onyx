@@ -9,6 +9,26 @@ export interface InstalledFile {
   versionNumber: string;
 }
 
+/** Mirrors `onyx_core::content::Update`. */
+export interface Update {
+  key: string;
+  projectId: string;
+  current: string;
+  latest: { id: string; versionNumber: string };
+}
+
+export function checkUpdates(instanceId: string): Promise<Update[]> {
+  return invoke<Update[]>("check_updates", { id: instanceId });
+}
+
+export function applyUpdate(instanceId: string, update: Update): Promise<InstalledFile> {
+  return invoke<InstalledFile>("apply_update", {
+    id: instanceId,
+    key: update.key,
+    versionId: update.latest.id,
+  });
+}
+
 /** Mirrors `content::KnownFile` in src-tauri. */
 export interface KnownFile {
   projectId: string;

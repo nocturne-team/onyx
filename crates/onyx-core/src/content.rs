@@ -232,6 +232,17 @@ pub async fn identify(
     client: &Client,
     game_dir: &Path,
 ) -> Result<HashMap<String, Version>, ContentError> {
+    let mut by_hash = hash_files(game_dir).await?;
+    let hashes: Vec<String> = by_hash.keys().cloned().collect();
+    let versions = client.versions_from_hashes(&hashes).await?;
+    Ok(versions
+        .into_iter()
+        .filter_map(|(hash, version)| Some((by_hash.remove(&hash)?, version)))
+        .collect())
+}
+
+/// SHA-1 of every file in the content folders, mapped to `<folder>/<name>`.
+async fn hash_files(game_dir: &Path) -> Result<HashMap<String, String>, ContentError> {
     let mut by_hash: HashMap<String, String> = HashMap::new();
     for folder in SCANNED {
         let dir = game_dir.join(folder);
@@ -254,12 +265,122 @@ pub async fn identify(
             }
         }
     }
+    Ok(by_hash)
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Update {
+    /// `<folder>/<file name>` of the installed file.
+    pub key: String,
+    pub project_id: String,
+    pub current: String,
+    pub latest: Version,
+}
+
+/// Installed files with a newer compatible version on Modrinth. One request
+/// per content folder.
+pub async fn check_updates(
+    client: &Client,
+    target: &Target<'_>,
+) -> Result<Vec<Update>, ContentError> {
+    let by_hash = hash_files(target.game_dir).await?;
     let hashes: Vec<String> = by_hash.keys().cloned().collect();
-    let versions = client.versions_from_hashes(&hashes).await?;
-    Ok(versions
-        .into_iter()
-        .filter_map(|(hash, version)| Some((by_hash.remove(&hash)?, version)))
-        .collect())
+    let current = client.versions_from_hashes(&hashes).await?;
+
+    let mut updates = Vec::new();
+    for (folder, project_type) in [
+        ("mods", "mod"),
+        ("resourcepacks", "resourcepack"),
+        ("shaderpacks", "shader"),
+    ] {
+        let folder_hashes: Vec<String> = by_hash
+            .iter()
+            .filter(|(hash, key)| {
+                key.starts_with(&format!("{folder}/")) && current.contains_key(*hash)
+            })
+            .map(|(hash, _)| hash.clone())
+            .collect();
+        if folder_hashes.is_empty() {
+            continue;
+        }
+        let loaders = match project_type {
+            "mod" => target.loaders(project_type).unwrap_or_default(),
+            // Resource packs are tagged with the "minecraft" loader on Modrinth.
+            "resourcepack" => vec!["minecraft"],
+            _ => Vec::new(),
+        };
+        let latest = client
+            .latest_versions_from_hashes(&folder_hashes, &loaders, &[target.game_version])
+            .await?;
+        for (hash, latest) in latest {
+            let (Some(installed), Some(key)) = (current.get(&hash), by_hash.get(&hash)) else {
+                continue;
+            };
+            if latest.id != installed.id && latest.date_published > installed.date_published {
+                updates.push(Update {
+                    key: key.clone(),
+                    project_id: installed.project_id.clone(),
+                    current: installed.version_number.clone(),
+                    latest,
+                });
+            }
+        }
+    }
+    updates.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(updates)
+}
+
+/// Replaces the installed file `key` (`<folder>/<file name>`) with
+/// `version_id`'s primary file, keeping it disabled if it was.
+pub async fn apply_update(
+    client: &Client,
+    game_dir: &Path,
+    key: &str,
+    version_id: &str,
+) -> Result<InstalledFile, ContentError> {
+    let (folder, file_name) = key
+        .split_once('/')
+        .filter(|(folder, name)| {
+            SCANNED.contains(folder) && !name.contains(['/', '\\']) && !name.starts_with('.')
+        })
+        .ok_or_else(|| ContentError::UnsupportedType(key.to_owned()))?;
+    let old = game_dir.join(folder).join(file_name);
+    if !old.is_file() {
+        return Err(ContentError::UnsupportedType(key.to_owned()));
+    }
+    let version = client.version(version_id, None).await?;
+    let file = version
+        .primary_file()
+        .ok_or_else(|| ContentError::NoCompatibleVersion("that version has no file".into()))?;
+    let mut new_name = safe_file_name(&file.filename);
+    if file_name.ends_with(".disabled") {
+        new_name.push_str(".disabled");
+    }
+    let new = game_dir.join(folder).join(&new_name);
+    download::fetch(
+        client.http(),
+        &Download {
+            url: file.url.clone(),
+            path: new.clone(),
+            sha1: Some(file.hashes.sha1.clone()),
+            size: Some(file.size),
+        },
+    )
+    .await?;
+    if new != old {
+        tokio::fs::remove_file(&old)
+            .await
+            .map_err(|source| ContentError::Io {
+                path: old.clone(),
+                source,
+            })?;
+    }
+    Ok(InstalledFile {
+        project_id: version.project_id,
+        file_name: new_name,
+        version_number: version.version_number,
+    })
 }
 
 #[cfg(test)]
@@ -392,6 +513,93 @@ mod tests {
             install_project(&client, &vanilla, "x", "resourcepack").await,
             Err(ContentError::NoCompatibleVersion(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn updates_are_found_and_applied_keeping_disabled_state() {
+        let server = MockServer::start().await;
+        let uri = server.uri();
+        let old = version(
+            "sodium-1",
+            "sodium",
+            "release",
+            &["fabric"],
+            json!([]),
+            &uri,
+        );
+        let new = version(
+            "sodium-2",
+            "sodium",
+            "release",
+            &["fabric"],
+            json!([]),
+            &uri,
+        );
+        let mut new_later = new.clone();
+        new_later["date_published"] = json!("2026-11-05T00:00:00Z");
+        let old_hash = old["files"][0]["hashes"]["sha1"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        Mock::given(method("POST"))
+            .and(path("/v2/version_files"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({ old_hash.clone(): old })),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v2/version_files/update"))
+            .and(wiremock::matchers::body_partial_json(
+                json!({"loaders": ["fabric"], "game_versions": ["26.3"]}),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ old_hash: new_later })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v2/version/sodium-2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(new_later.clone()))
+            .mount(&server)
+            .await;
+        serve_file(&server, "sodium-2").await;
+
+        let game = tempfile::tempdir().unwrap();
+        std::fs::create_dir(game.path().join("mods")).unwrap();
+        std::fs::write(
+            game.path().join("mods/sodium-1.jar.disabled"),
+            "jar of sodium-1",
+        )
+        .unwrap();
+        let client = Client::with_base(server.uri(), ResponseCache::new(None));
+        let target = Target {
+            game_dir: game.path(),
+            loader: Loader::Fabric,
+            game_version: "26.3",
+        };
+
+        let updates = check_updates(&client, &target).await.unwrap();
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].key, "mods/sodium-1.jar.disabled");
+        assert_eq!(updates[0].current, "sodium-1");
+
+        let installed = apply_update(&client, game.path(), &updates[0].key, &updates[0].latest.id)
+            .await
+            .unwrap();
+        assert_eq!(installed.file_name, "sodium-2.jar.disabled");
+        assert!(game.path().join("mods/sodium-2.jar.disabled").is_file());
+        assert!(!game.path().join("mods/sodium-1.jar.disabled").exists());
+
+        assert!(
+            apply_update(&client, game.path(), "../instance.json", "sodium-2")
+                .await
+                .is_err()
+        );
+        assert!(
+            apply_update(&client, game.path(), "mods/../x.jar", "sodium-2")
+                .await
+                .is_err()
+        );
     }
 
     #[test]

@@ -232,6 +232,35 @@ impl Client {
         Ok(serde_json::from_str(&body)?)
     }
 
+    /// The newest version compatible with `loaders` and `game_versions` for
+    /// each project the hashed files belong to, keyed by hash. Empty filters
+    /// are left out of the request. Never cached.
+    pub async fn latest_versions_from_hashes(
+        &self,
+        sha1s: &[String],
+        loaders: &[&str],
+        game_versions: &[&str],
+    ) -> Result<std::collections::HashMap<String, Version>, ApiError> {
+        if sha1s.is_empty() {
+            return Ok(Default::default());
+        }
+        let mut body = serde_json::json!({ "hashes": sha1s, "algorithm": "sha1" });
+        if !loaders.is_empty() {
+            body["loaders"] = serde_json::json!(loaders);
+        }
+        if !game_versions.is_empty() {
+            body["game_versions"] = serde_json::json!(game_versions);
+        }
+        let response = self
+            .http
+            .post(format!("{}/v2/version_files/update", self.base))
+            .json(&body)
+            .send()
+            .await?;
+        let body = check_status(response).await?.text().await?;
+        Ok(serde_json::from_str(&body)?)
+    }
+
     /// GETs `path`, serving from cache when the entry is fresh enough. If the
     /// request fails and any cached copy exists, that copy is returned instead.
     async fn get_cached<T: DeserializeOwned>(
