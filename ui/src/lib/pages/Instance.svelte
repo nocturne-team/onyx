@@ -4,6 +4,8 @@
     FolderOpen,
     Gamepad2,
     ImageUp,
+    ArrowUpCircle,
+    Package,
     Palette,
     RefreshCw,
     ScrollText,
@@ -19,6 +21,7 @@
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
   import IconEditor from "../components/IconEditor.svelte";
+  import { checkPackUpdate, updateModpack, type PackUpdate } from "../content.svelte";
   import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
   import {
     deleteInstance,
@@ -70,6 +73,29 @@
   }
 
   let editingIcon = $state(false);
+
+  let packUpdate = $state<PackUpdate | null>(null);
+  let packError = $state<string | null>(null);
+  // Re-check whenever the installed pack version changes (e.g. after updating).
+  $effect(() => {
+    const version = instance?.pack?.versionId;
+    packUpdate = null;
+    if (!version) return;
+    checkPackUpdate(id)
+      .then((update) => (packUpdate = update))
+      .catch((e) => console.warn("couldn't check for a modpack update", e));
+  });
+
+  async function runPackUpdate() {
+    if (!packUpdate) return;
+    packError = null;
+    try {
+      await updateModpack(id, packUpdate.versionId);
+      packUpdate = null;
+    } catch (e) {
+      packError = String(e);
+    }
+  }
 
   async function saveIconConfig(config: IconConfig) {
     iconMenu = false;
@@ -193,6 +219,10 @@
               ? `Played ${relativeTime(new Date(instance.lastPlayed * 1000))}`
               : "Never played"}
           </span>
+          {#if instance.pack}
+            <span class="dot"></span>
+            <span><Package size={15} /> Modpack {instance.pack.versionNumber}</span>
+          {/if}
           {#if instance.playedSecs > 0}
             <span class="dot"></span>
             <span>{playTime(instance.playedSecs)} total</span>
@@ -230,6 +260,18 @@
           </span>
         {/if}
       </div>
+    {/if}
+
+    {#if packUpdate && !game}
+      <div class="banner update">
+        <ArrowUpCircle size={18} />
+        <span>Modpack update available: <strong>{packUpdate.versionNumber}</strong></span>
+        <span class="muted">Your own added mods and worlds are kept.</span>
+        <button class="update-button" onclick={runPackUpdate}>Update</button>
+      </div>
+    {/if}
+    {#if packError}
+      <div class="banner error"><TriangleAlert size={18} /> {packError}</div>
     {/if}
 
     {#if iconError}
@@ -412,6 +454,28 @@
     padding: 12px 16px;
     border-radius: var(--radius);
     background: var(--bg-raised);
+  }
+
+  .banner.update {
+    background: var(--brand-highlight);
+    color: var(--text-strong);
+  }
+
+  .banner.update :global(svg) {
+    color: var(--brand);
+  }
+
+  .banner.update .muted {
+    flex: 1;
+  }
+
+  .update-button {
+    height: 34px;
+    padding: 0 14px;
+    border-radius: var(--radius-sm);
+    background: var(--brand-bg);
+    color: var(--brand-text);
+    font-weight: 600;
   }
 
   .banner.error {

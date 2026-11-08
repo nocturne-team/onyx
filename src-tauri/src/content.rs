@@ -8,8 +8,9 @@ use std::time::Duration;
 use onyx_core::cache::CachePolicy;
 use onyx_core::content::{self, InstalledFile, Target, Update};
 use onyx_core::download::{self, Download, Progress};
-use onyx_core::instance::{self, Instance, NewInstance};
+use onyx_core::instance::{self, Instance, NewInstance, PackSource};
 use onyx_core::modpack::{self, Index};
+use onyx_core::modrinth::Version;
 use onyx_core::paths;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -136,12 +137,25 @@ pub async fn import_mrpack(
     state: State<'_, AppState>,
     path: PathBuf,
 ) -> Result<Instance, String> {
-    let read = path.clone();
-    let index = tauri::async_runtime::spawn_blocking(move || modpack::read_index(&read))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    start_pack_install(app, &state, path, None, index)
+    let index = read_index(&path).await?;
+    // If the file is a pack Modrinth knows, remember which, so it can update.
+    let pack = match download::sha1_file(&path).await {
+        Ok(sha1) => state
+            .modrinth
+            .versions_from_hashes(std::slice::from_ref(&sha1))
+            .await
+            .ok()
+            .and_then(|mut found| found.remove(&sha1))
+            .map(|v| PackSource {
+                project_id: v.project_id,
+                version_id: v.id,
+                version_number: v.version_number,
+            }),
+        Err(_) => None,
+    };
+    let instance = create_pack_instance(&state, &index)?;
+    start_pack_install(app, &state, &instance.id, path, None, index, pack);
+    Ok(instance)
 }
 
 /// Downloads the newest version of a modpack project and installs it as a
@@ -152,24 +166,130 @@ pub async fn install_modpack(
     state: State<'_, AppState>,
     project_id: String,
 ) -> Result<Instance, String> {
-    let versions = state
+    let version = latest_pack_version(&state, &project_id)
+        .await?
+        .ok_or("this modpack has no versions")?;
+    let path = download_pack(&state, &version).await?;
+    let index = read_index(&path).await?;
+    let instance = create_pack_instance(&state, &index)?;
+    start_pack_install(
+        app,
+        &state,
+        &instance.id,
+        path.clone(),
+        Some(path),
+        index,
+        Some(pack_source(&version)),
+    );
+    Ok(use_project_icon(&state, &project_id, &instance)
+        .await
+        .unwrap_or(instance))
+}
+
+/// A newer version of the modpack an instance came from.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackUpdate {
+    pub version_id: String,
+    pub version_number: String,
+}
+
+#[tauri::command]
+pub async fn check_pack_update(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<PackUpdate>, String> {
+    let instance = instance::load(&state.paths.instances, &id).map_err(|e| e.to_string())?;
+    let Some(pack) = instance.pack else {
+        return Ok(None);
+    };
+    let latest = latest_pack_version(&state, &pack.project_id).await?;
+    Ok(latest
+        .filter(|v| v.id != pack.version_id)
+        .map(|v| PackUpdate {
+            version_id: v.id,
+            version_number: v.version_number,
+        }))
+}
+
+/// Installs another version of the instance's modpack over it. Files the
+/// old version brought are swapped; files the user added stay.
+#[tauri::command]
+pub async fn update_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    version_id: String,
+) -> Result<(), String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err("Stop the game before updating the modpack".into());
+    }
+    let instance = instance::load(&state.paths.instances, &id).map_err(|e| e.to_string())?;
+    let pack = instance
+        .pack
+        .ok_or("this instance isn't from a Modrinth modpack")?;
+    let version = state
         .modrinth
-        .project_versions(&project_id, &[], &[], Some(CachePolicy::SHORT))
+        .version(&version_id, None)
         .await
         .map_err(|e| e.to_string())?;
-    let version = versions
-        .iter()
-        .find(|v| v.version_type == "release")
-        .or_else(|| versions.first())
-        .ok_or("this modpack has no versions")?;
+    if version.project_id != pack.project_id {
+        return Err("that version belongs to a different modpack".into());
+    }
+    let path = download_pack(&state, &version).await?;
+    let index = read_index(&path).await?;
+    index.target().map_err(|e| e.to_string())?;
+    start_pack_install(
+        app,
+        &state,
+        &id,
+        path.clone(),
+        Some(path),
+        index,
+        Some(pack_source(&version)),
+    );
+    Ok(())
+}
+
+async fn read_index(path: &std::path::Path) -> Result<Index, String> {
+    let path = path.to_owned();
+    tauri::async_runtime::spawn_blocking(move || modpack::read_index(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
+
+/// Newest release (or newest anything, if there are no releases).
+async fn latest_pack_version(
+    state: &AppState,
+    project_id: &str,
+) -> Result<Option<Version>, String> {
+    let versions = state
+        .modrinth
+        .project_versions(project_id, &[], &[], Some(CachePolicy::SHORT))
+        .await
+        .map_err(|e| e.to_string())?;
+    let release = versions.iter().position(|v| v.version_type == "release");
+    Ok(versions.into_iter().nth(release.unwrap_or(0)))
+}
+
+fn pack_source(version: &Version) -> PackSource {
+    PackSource {
+        project_id: version.project_id.clone(),
+        version_id: version.id.clone(),
+        version_number: version.version_number.clone(),
+    }
+}
+
+/// Downloads a pack version's `.mrpack` into the cache dir.
+async fn download_pack(state: &AppState, version: &Version) -> Result<PathBuf, String> {
     let file = version
         .primary_file()
         .ok_or("this modpack version has no file")?;
-
-    let dir = paths::cache_dir()
+    let path = paths::cache_dir()
         .ok_or("no cache directory")?
-        .join("modpacks");
-    let path = dir.join(format!("{}.mrpack", version.id));
+        .join("modpacks")
+        .join(format!("{}.mrpack", version.id));
     download::fetch(
         state.modrinth.http(),
         &Download {
@@ -181,16 +301,22 @@ pub async fn install_modpack(
     )
     .await
     .map_err(|e| e.to_string())?;
+    Ok(path)
+}
 
-    let read = path.clone();
-    let index = tauri::async_runtime::spawn_blocking(move || modpack::read_index(&read))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let instance = start_pack_install(app, &state, path.clone(), Some(path), index)?;
-    Ok(use_project_icon(&state, &project_id, &instance)
-        .await
-        .unwrap_or(instance))
+fn create_pack_instance(state: &AppState, index: &Index) -> Result<Instance, String> {
+    let target = index.target().map_err(|e| e.to_string())?;
+    instance::create(
+        &state.paths.instances,
+        NewInstance {
+            name: index.name.clone(),
+            game_version: target.game_version,
+            loader: target.loader,
+            loader_version: target.loader_version,
+            icon_config: None,
+        },
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Gives a modpack instance its Modrinth project icon. Failing is fine: the
@@ -226,32 +352,21 @@ async fn use_project_icon(
         .ok()
 }
 
-/// Creates the instance and installs the pack in the background.
+/// Installs the pack into an existing instance in the background, then
+/// records the pack version and its game/loader versions on the instance.
 /// `cleanup` is a downloaded pack file to delete afterwards.
 fn start_pack_install(
     app: AppHandle,
     state: &AppState,
+    id: &str,
     mrpack: PathBuf,
     cleanup: Option<PathBuf>,
     index: Index,
-) -> Result<Instance, String> {
-    let target = index.target().map_err(|e| e.to_string())?;
+    pack: Option<PackSource>,
+) {
     let root = state.paths.instances.clone();
-    let instance = instance::create(
-        &root,
-        NewInstance {
-            name: index.name.clone(),
-            game_version: target.game_version,
-            loader: target.loader,
-            loader_version: target.loader_version,
-            icon_config: None,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    let game_dir = instance::instance_dir(&root, &instance.id).map_err(|e| e.to_string())?;
-
-    let id = instance.id.clone();
-    let stage = format!("Installing {}", index.name);
+    let id = id.to_owned();
+    let stage = format!("Installing {} {}", index.name, index.version_id);
     state.games.lock().unwrap().insert(
         id.clone(),
         Game {
@@ -283,14 +398,26 @@ fn start_pack_install(
             })
         };
         let http = app.state::<AppState>().modrinth.http().clone();
-        let result = modpack::install(&http, &mrpack, &index, &game_dir, &progress).await;
+        let result = async {
+            let game_dir = instance::instance_dir(&root, &id).map_err(|e| e.to_string())?;
+            modpack::install(&http, &mrpack, &index, &game_dir, &progress)
+                .await
+                .map_err(|e| e.to_string())?;
+            let target = index.target().map_err(|e| e.to_string())?;
+            let mut instance = instance::load(&root, &id).map_err(|e| e.to_string())?;
+            instance.game_version = target.game_version;
+            instance.loader = target.loader;
+            instance.loader_version = target.loader_version;
+            instance.pack = pack;
+            instance::save(&root, &instance).map_err(|e| e.to_string())
+        }
+        .await;
         ticker.abort();
         if let Some(path) = cleanup {
             let _ = tokio::fs::remove_file(path).await;
         }
-        finish_install(&app, &id, result.err().map(|e| e.to_string()));
+        finish_install(&app, &id, result.err());
     });
-    Ok(instance)
 }
 
 fn finish_install(app: &AppHandle, id: &str, error: Option<String>) {

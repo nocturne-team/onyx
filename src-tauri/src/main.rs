@@ -125,6 +125,8 @@ fn main() {
             content::apply_update,
             content::import_mrpack,
             content::install_modpack,
+            content::check_pack_update,
+            content::update_modpack,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Onyx");

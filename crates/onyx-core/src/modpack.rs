@@ -8,12 +8,15 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::download::{self, Download, DownloadError, Progress};
 use crate::instance::Loader;
 
 const INDEX: &str = "modrinth.index.json";
+/// Copy of the installed pack's index inside the instance, so an update knows
+/// which files came from the pack (and may be removed) and which the user added.
+pub const INSTALLED_INDEX: &str = ".onyx/pack-index.json";
 /// Hosts the format allows downloads from. Anything else is refused, since a
 /// pack could otherwise point the launcher at arbitrary URLs.
 const ALLOWED_HOSTS: &[&str] = &[
@@ -41,7 +44,7 @@ pub enum ModpackError {
     Download(#[from] DownloadError),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Index {
     pub format_version: u32,
@@ -53,7 +56,7 @@ pub struct Index {
     pub dependencies: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexFile {
     pub path: String,
@@ -63,7 +66,7 @@ pub struct IndexFile {
     pub file_size: Option<u64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Env {
     pub client: String,
 }
@@ -217,7 +220,10 @@ pub fn extract_overrides(mrpack: &Path, game_dir: &Path) -> Result<(), ModpackEr
     Ok(())
 }
 
-/// Downloads the pack's files and applies its overrides to `game_dir`.
+/// Downloads the pack's files and applies its overrides to `game_dir`. When
+/// the instance already has a pack installed (an update), files the old
+/// version listed that the new one drops or changes are removed first;
+/// anything the user added is left alone.
 pub async fn install(
     http: &reqwest::Client,
     mrpack: &Path,
@@ -226,11 +232,55 @@ pub async fn install(
     progress: &Arc<Progress>,
 ) -> Result<(), ModpackError> {
     let items = downloads(index, game_dir)?;
+    if let Some(old) = installed_index(game_dir) {
+        remove_stale_files(&old, index, game_dir)?;
+    }
     download::download_all(http, items, progress, download::DEFAULT_CONCURRENCY).await?;
-    let (mrpack, game_dir) = (mrpack.to_owned(), game_dir.to_owned());
-    tokio::task::spawn_blocking(move || extract_overrides(&mrpack, &game_dir))
+    let (mrpack, dir) = (mrpack.to_owned(), game_dir.to_owned());
+    tokio::task::spawn_blocking(move || extract_overrides(&mrpack, &dir))
         .await
-        .expect("override extraction panicked")
+        .expect("override extraction panicked")?;
+
+    let saved = game_dir.join(INSTALLED_INDEX);
+    let io = |source| ModpackError::Io {
+        path: saved.clone(),
+        source,
+    };
+    std::fs::create_dir_all(saved.parent().expect("has a parent")).map_err(io)?;
+    std::fs::write(&saved, serde_json::to_vec(index).expect("index serializes")).map_err(io)
+}
+
+/// The index saved by the last install, if any.
+pub fn installed_index(game_dir: &Path) -> Option<Index> {
+    let bytes = std::fs::read(game_dir.join(INSTALLED_INDEX)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn remove_stale_files(old: &Index, new: &Index, game_dir: &Path) -> Result<(), ModpackError> {
+    let kept: HashMap<&str, Option<&String>> = new
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f.hashes.get("sha1")))
+        .collect();
+    for file in &old.files {
+        let unchanged = kept
+            .get(file.path.as_str())
+            .is_some_and(|sha1| *sha1 == file.hashes.get("sha1"));
+        if unchanged {
+            continue;
+        }
+        // Old indexes come from our own copy, but stay careful anyway.
+        let Ok(relative) = safe_relative(&file.path) else {
+            continue;
+        };
+        let path = game_dir.join(relative);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(source) => return Err(ModpackError::Io { path, source }),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -309,6 +359,50 @@ mod tests {
         let forge = INDEX_JSON.replace("fabric-loader", "forge");
         let index = read_index(&pack(dir.path(), &forge, &[])).unwrap();
         assert_eq!(index.target().unwrap().loader, Loader::Forge);
+    }
+
+    #[test]
+    fn updates_remove_dropped_and_changed_files_only() {
+        let game = tempfile::tempdir().unwrap();
+        let mods = game.path().join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        for name in ["kept.jar", "dropped.jar", "changed.jar", "users-own.jar"] {
+            std::fs::write(mods.join(name), name).unwrap();
+        }
+        let file = |path: &str, sha1: &str| IndexFile {
+            path: path.into(),
+            hashes: HashMap::from([("sha1".to_owned(), sha1.to_owned())]),
+            env: None,
+            downloads: vec![],
+            file_size: None,
+        };
+        let index = |files| Index {
+            format_version: 1,
+            game: "minecraft".into(),
+            version_id: "1".into(),
+            name: "P".into(),
+            summary: None,
+            files,
+            dependencies: HashMap::new(),
+        };
+        let old = index(vec![
+            file("mods/kept.jar", "a"),
+            file("mods/dropped.jar", "b"),
+            file("mods/changed.jar", "c"),
+            file("../outside.jar", "d"),
+        ]);
+        let new = index(vec![
+            file("mods/kept.jar", "a"),
+            file("mods/changed.jar", "c2"),
+        ]);
+        remove_stale_files(&old, &new, game.path()).unwrap();
+
+        let mut left: Vec<_> = std::fs::read_dir(&mods)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["kept.jar", "users-own.jar"]);
     }
 
     #[test]

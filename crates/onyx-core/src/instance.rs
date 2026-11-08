@@ -47,6 +47,17 @@ pub struct Instance {
     /// custom image. `None` means "pick one from the id".
     #[serde(default)]
     pub icon_config: Option<IconConfig>,
+    /// The Modrinth modpack version this instance was installed from, if known.
+    #[serde(default)]
+    pub pack: Option<PackSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackSource {
+    pub project_id: String,
+    pub version_id: String,
+    pub version_number: String,
 }
 
 /// A built-in icon: ids from the UI's icon catalog (`ui/src/lib/iconCatalog.ts`).
@@ -172,6 +183,7 @@ pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> 
         max_memory_mb: None,
         icon: None,
         icon_config: new.icon_config.filter(IconConfig::is_reasonable),
+        pack: None,
     };
     save(root, &instance)?;
     Ok(instance)

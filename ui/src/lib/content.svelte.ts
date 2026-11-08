@@ -29,6 +29,19 @@ export function applyUpdate(instanceId: string, update: Update): Promise<Install
   });
 }
 
+export interface PackUpdate {
+  versionId: string;
+  versionNumber: string;
+}
+
+export function checkPackUpdate(instanceId: string): Promise<PackUpdate | null> {
+  return invoke<PackUpdate | null>("check_pack_update", { id: instanceId });
+}
+
+export async function updateModpack(instanceId: string, versionId: string) {
+  await invoke("update_modpack", { id: instanceId, versionId });
+}
+
 /** Mirrors `content::KnownFile` in src-tauri. */
 export interface KnownFile {
   projectId: string;

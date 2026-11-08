@@ -2,7 +2,7 @@
 
 ## Next
 
-- [ ] Update modpack instances to a newer pack version (needs the pack's project/version stored on the instance)
+- [ ] Project page when clicking a Browse result or Home card
 
 ## Later
 
@@ -12,7 +12,6 @@
 - [ ] Settings: memory per instance and a default (instance.json already has `maxMemoryMb`)
 - [ ] Forge before 1.13 (old installer format with `versionInfo`)
 - [ ] "Support Forge" link on Forge instances (Forge's version.json asks automated installers for it)
-- [ ] Project page when clicking a Browse result or Home card
 - [ ] Browse: loader and game version filters outside the "install into instance" mode
 - [ ] Cancel an install that's still preparing
 

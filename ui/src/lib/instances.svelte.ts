@@ -17,6 +17,8 @@ export interface Instance {
   /** File name of a custom icon; `null` means a generated one. */
   icon: string | null;
   iconConfig: IconConfig | null;
+  /** The Modrinth modpack version this came from, when known. */
+  pack: { projectId: string; versionId: string; versionNumber: string } | null;
 }
 
 export interface Progress {
