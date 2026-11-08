@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: [ "*" ]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns: [ "tauri*" ]
+
+  - package-ecosystem: npm
+    directory: /ui
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns: [ "@tauri-apps/*" ]
+    ignore:
+      # svelte-check doesn't support TypeScript 7 without extra setup.
+      - dependency-name: typescript
+        update-types: [ version-update:semver-major ]

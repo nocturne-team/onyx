@@ -1,0 +1,60 @@
+name: Bug report
+description: Something doesn't work the way it should
+labels: [ bug ]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! The more of this you can fill in, the faster it can be fixed.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where in Onyx?
+      options:
+        - Launching or installing an instance
+        - Microsoft account / sign-in
+        - Modrinth account / My projects
+        - Browse or installing content
+        - Modpacks (.mrpack)
+        - Settings, themes or the window itself
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: loader
+    attributes:
+      label: Loader
+      description: If it's about an instance.
+      options:
+        - Vanilla
+        - Fabric
+        - Quilt
+        - Forge
+        - NeoForge
+        - Not about an instance
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Onyx version (bottom left of Settings), plus Minecraft and loader versions if it's about an instance.
+      placeholder: Onyx 0.1.0, Minecraft 26.3, Fabric Loader 0.20.1
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / Arch Linux (KDE, Wayland)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: For game problems, the instance's log (Logs tab). Upload it to https://mclo.gs and paste the link, or drop the file here. Check it for anything private first.
