@@ -53,6 +53,12 @@ pub struct Instance {
     /// A specific Java binary for this instance, over the Settings choice.
     #[serde(default)]
     pub java_path: Option<PathBuf>,
+    /// Launches from a copy of a Prism Launcher profile (`mmc-pack.json` and
+    /// component patches in `.onyx/prism/`, see `prism::profile`) instead of
+    /// Onyx's own loader setup. `loader` and `loader_version` are then only
+    /// for display and content filtering.
+    #[serde(default)]
+    pub prism_components: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,6 +194,7 @@ pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> 
         icon_config: new.icon_config.filter(IconConfig::is_reasonable),
         pack: None,
         java_path: None,
+        prism_components: false,
     };
     save(root, &instance)?;
     Ok(instance)

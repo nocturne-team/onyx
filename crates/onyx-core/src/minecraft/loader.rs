@@ -216,7 +216,7 @@ pub(crate) fn merge_parts(
 }
 
 /// `group:name` plus classifier, without the version.
-fn library_key(coordinate: &str) -> String {
+pub(crate) fn library_key(coordinate: &str) -> String {
     let parts: Vec<&str> = coordinate.split(':').collect();
     match parts.as_slice() {
         [group, name, _version, classifier, ..] => format!("{group}:{name}:{classifier}"),

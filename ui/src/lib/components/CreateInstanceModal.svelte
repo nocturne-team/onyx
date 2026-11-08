@@ -4,6 +4,7 @@
     Boxes,
     Check,
     Compass,
+    FileArchive,
     FolderOpen,
     PackageOpen,
     Plus,
@@ -30,7 +31,9 @@
   import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
   import {
     importPrismInstances,
+    importPrismZip,
     pickPrismFolder,
+    pickPrismZip,
     prismInstances,
     prismRoots,
     type PrismInstance,
@@ -256,6 +259,22 @@
     }
   }
 
+  async function importZip() {
+    const path = await pickPrismZip();
+    if (!path) return;
+    importing = true;
+    error = null;
+    try {
+      const instance = await importPrismZip(path);
+      openInstance(instance.id);
+      onClose();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      importing = false;
+    }
+  }
+
   async function create() {
     if (!gameVersion) return;
     creating = true;
@@ -336,7 +355,7 @@
             <span class="type-icon"><PackageOpen size={22} /></span>
             <span>
               <strong>Import from Prism Launcher</strong>
-              <span class="muted">Copy instances from Prism Launcher or MultiMC, with their worlds and mods.</span>
+              <span class="muted">Copy instances from Prism Launcher or MultiMC, or import an exported .zip.</span>
             </span>
           </button>
         </div>
@@ -400,6 +419,13 @@
             Files are copied, so Prism keeps its instances. Big modpacks can take a minute.
           </p>
         {/if}
+
+        <div class="folder-row zip-row">
+          <span class="muted">Or import an exported instance, like GT New Horizons' Prism download.</span>
+          <button class="secondary" onclick={importZip} disabled={importing}>
+            <FileArchive size={16} /> Import .zip
+          </button>
+        </div>
 
         {#if error}<p class="error">{error}</p>{/if}
 
@@ -798,6 +824,11 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+  }
+
+  .zip-row {
+    margin-top: 12px;
+    justify-content: space-between;
   }
 
   .path {

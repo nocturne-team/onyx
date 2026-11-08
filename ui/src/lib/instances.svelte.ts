@@ -21,6 +21,8 @@ export interface Instance {
   pack: { projectId: string; versionId: string; versionNumber: string } | null;
   /** A Java binary just for this instance. */
   javaPath: string | null;
+  /** Launches from a Prism Launcher profile it was imported with (GTNH). */
+  prismComponents: boolean;
 }
 
 export interface Progress {

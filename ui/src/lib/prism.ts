@@ -50,3 +50,19 @@ export async function importPrismInstances(
   await loadInstances();
   return result;
 }
+
+export async function pickPrismZip(): Promise<string | null> {
+  const path = await open({
+    multiple: false,
+    title: "Exported Prism Launcher instance",
+    filters: [{ name: "Prism Launcher instance", extensions: ["zip"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
+/** Creates the instance and extracts its files in the background. */
+export async function importPrismZip(path: string): Promise<Instance> {
+  const instance = await invoke<Instance>("import_prism_zip", { path });
+  await loadInstances();
+  return instance;
+}

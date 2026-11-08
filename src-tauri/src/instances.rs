@@ -16,6 +16,7 @@ use onyx_core::minecraft::launch::{self, LaunchAccount, LaunchSpec};
 use onyx_core::minecraft::loader::{self, LoaderVersion, MetaLoader};
 use onyx_core::minecraft::{self, Environment, InstallError, VersionManifest, install, java};
 use onyx_core::mods::{self, ContentFile, ContentKind};
+use onyx_core::prism;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -513,10 +514,20 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
     let session = active_session(state).await?;
 
     set_stage(app, state, id, "Getting version info", None);
-    let mut version = minecraft::version_info(http, meta, &instance.game_version)
-        .await
-        .map_err(|e| e.to_string())?;
-    if let (Some(meta_loader), Some(loader_version)) = (
+    // Instances imported from Prism with their own component patches (GTNH)
+    // launch from that profile; Onyx's loader setup is skipped for them.
+    let prism_components = instance.prism_components;
+    let mut version = if prism_components {
+        prism::profile::resolve(http, meta, &prism::profile::profile_dir(&game_dir))
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        minecraft::version_info(http, meta, &instance.game_version)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+    if let (false, Some(meta_loader), Some(loader_version)) = (
+        prism_components,
         MetaLoader::from_loader(instance.loader),
         instance.loader_version.as_deref(),
     ) {
@@ -609,10 +620,11 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
             .await
             .map_err(|e| e.to_string())?;
         let forge_version = match (
+            prism_components,
             ForgeLoader::from_loader(instance.loader),
             instance.loader_version.as_deref(),
         ) {
-            (Some(forge_loader), Some(loader_version)) => {
+            (false, Some(forge_loader), Some(loader_version)) => {
                 progress.reset();
                 *stage.lock().unwrap() = format!(
                     "Installing {}",

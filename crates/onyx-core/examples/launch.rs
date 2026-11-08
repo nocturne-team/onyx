@@ -2,6 +2,9 @@
 //! dummy account. For checking the install/launch pipeline without the UI:
 //!
 //! `cargo run -p onyx-core --example launch -- 26.3 /tmp/game [fabric|quilt|forge|neoforge]`
+//!
+//! `-- prism <instance dir>` launches an instance imported from Prism with
+//! its own components (see the `prism_import` example), from `.onyx/prism/`.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -56,7 +59,14 @@ async fn main() {
         })
     };
 
-    let mut version = minecraft::version_info(&http, &meta, &id).await.unwrap();
+    let mut version = if id == "prism" {
+        let dir = onyx_core::prism::profile::profile_dir(game_dir.as_ref());
+        onyx_core::prism::profile::resolve(&http, &meta, &dir)
+            .await
+            .unwrap_or_else(|e| panic!("{e}"))
+    } else {
+        minecraft::version_info(&http, &meta, &id).await.unwrap()
+    };
     if let Some(meta_loader) = meta_loader {
         let versions = loader::loader_versions(&http, meta_loader, &id)
             .await
@@ -71,7 +81,9 @@ async fn main() {
     let component = version
         .java_version
         .as_ref()
-        .map_or("jre-legacy", |j| j.component.as_str());
+        .map_or("jre-legacy", |j| j.component.as_str())
+        .to_owned();
+    let component = component.as_str();
     eprintln!("java runtime {component}");
     let java = java::ensure_runtime(&http, &meta, component, &progress)
         .await
@@ -126,7 +138,9 @@ async fn main() {
         game_dir: game_dir.into(),
         account: &account,
         client_id: "",
-        max_memory_mb: None,
+        max_memory_mb: std::env::var("ONYX_MEMORY_MB")
+            .ok()
+            .and_then(|s| s.parse().ok()),
         launcher_version: config::VERSION,
     };
     let mut child = launch::command(&spec).spawn().unwrap();

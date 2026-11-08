@@ -157,6 +157,7 @@ fn main() {
             prism::prism_roots,
             prism::prism_instances,
             prism::import_prism_instances,
+            prism::import_prism_zip,
             content::install_modpack,
             content::check_pack_update,
             content::update_modpack,

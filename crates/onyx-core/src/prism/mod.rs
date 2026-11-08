@@ -1,6 +1,11 @@
 //! Importing instances from Prism Launcher (and MultiMC, which uses the same
 //! format): `instance.cfg` (Qt INI), `mmc-pack.json` (components) and the game
-//! folder (`minecraft/` or `.minecraft/`).
+//! folder (`minecraft/` or `.minecraft/`). Exported instances (`.zip`) are
+//! in [`archive`]; instances with their own component patches launch through
+//! [`profile`].
+
+pub mod archive;
+pub mod profile;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,11 +32,15 @@ pub enum PrismError {
     NotFound(String),
     #[error("can't import {name}: {reason}")]
     Unsupported { name: String, reason: String },
+    #[error("{0}")]
+    Profile(String),
+    #[error("{}: {message}", path.display())]
+    Archive { path: PathBuf, message: String },
     #[error(transparent)]
     Instance(#[from] InstanceError),
 }
 
-fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> PrismError + '_ {
+pub(crate) fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> PrismError + '_ {
     move |source| PrismError::Io {
         path: path.to_owned(),
         source,
@@ -98,6 +107,8 @@ pub struct PrismInstance {
     /// "CurseForge", "Modrinth", ... for instances installed from a modpack.
     pub pack_platform: Option<String>,
     #[serde(skip)]
+    icon_key: Option<String>,
+    #[serde(skip)]
     settings: InstanceSettings,
 }
 
@@ -106,6 +117,8 @@ struct InstanceSettings {
     max_memory_mb: Option<u32>,
     java_path: Option<PathBuf>,
     pack: Option<PackSource>,
+    /// Has component patches, so it launches from its Prism profile.
+    prism_components: bool,
 }
 
 /// Every instance in a Prism data folder, sorted by name. Folders that aren't
@@ -136,7 +149,32 @@ pub fn list(root: &Path) -> Result<Vec<PrismInstance>, PrismError> {
 
 fn read_instance(dir: &Path, folder: &str, icons_dir: &Path) -> Result<PrismInstance, PrismError> {
     let cfg_path = dir.join("instance.cfg");
-    let cfg = parse_ini(&std::fs::read_to_string(&cfg_path).map_err(io_err(&cfg_path))?);
+    let cfg = std::fs::read_to_string(&cfg_path).map_err(io_err(&cfg_path))?;
+    let pack = std::fs::read(dir.join("mmc-pack.json")).ok();
+    let mut found = parse_instance(
+        folder,
+        &cfg,
+        pack.as_deref(),
+        game_folder(dir).is_some(),
+        profile::has_patches(dir),
+    );
+    found.icon_path = found
+        .icon_key
+        .as_deref()
+        .and_then(|key| find_icon(icons_dir, key));
+    Ok(found)
+}
+
+/// Reads an instance from its `instance.cfg` and `mmc-pack.json` contents.
+/// The caller fills in `icon_path`.
+fn parse_instance(
+    folder: &str,
+    cfg: &str,
+    pack: Option<&[u8]>,
+    has_game_folder: bool,
+    has_patches: bool,
+) -> PrismInstance {
+    let cfg = parse_ini(cfg);
     let get = |key: &str| cfg.get(key).map(String::as_str).filter(|v| !v.is_empty());
     let flag = |key: &str| get(key) == Some("true");
 
@@ -146,10 +184,9 @@ fn read_instance(dir: &Path, folder: &str, icons_dir: &Path) -> Result<PrismInst
         unsupported = Some("this is a legacy MultiMC instance".to_owned());
     }
 
-    let pack_path = dir.join("mmc-pack.json");
-    let (game_version, loader, loader_version) = match std::fs::read(&pack_path) {
-        Ok(bytes) => match serde_json::from_slice::<MmcPack>(&bytes) {
-            Ok(pack) => match pack.target() {
+    let (game_version, loader, loader_version) = match pack {
+        Some(bytes) => match serde_json::from_slice::<MmcPack>(bytes) {
+            Ok(pack) => match pack.target(has_patches) {
                 Ok(target) => target,
                 Err(reason) => {
                     unsupported.get_or_insert(reason);
@@ -161,12 +198,12 @@ fn read_instance(dir: &Path, folder: &str, icons_dir: &Path) -> Result<PrismInst
                 (None, None, None)
             }
         },
-        Err(_) => {
+        None => {
             unsupported.get_or_insert("it has no mmc-pack.json".to_owned());
             (None, None, None)
         }
     };
-    if game_folder(dir).is_none() {
+    if !has_game_folder {
         unsupported.get_or_insert("it has no game folder".to_owned());
     }
 
@@ -200,16 +237,15 @@ fn read_instance(dir: &Path, folder: &str, icons_dir: &Path) -> Result<PrismInst
         })
         .flatten();
 
-    let icon_path = get("iconKey").and_then(|key| find_icon(icons_dir, key));
-
-    Ok(PrismInstance {
+    PrismInstance {
         folder: folder.to_owned(),
         name,
         game_version,
         loader,
         loader_version,
         unsupported,
-        icon_path,
+        icon_path: None,
+        icon_key: get("iconKey").map(str::to_owned),
         last_played: get("lastLaunchTime")
             .and_then(|ms| ms.parse::<u64>().ok())
             .filter(|&ms| ms > 0)
@@ -222,8 +258,9 @@ fn read_instance(dir: &Path, folder: &str, icons_dir: &Path) -> Result<PrismInst
             max_memory_mb,
             java_path,
             pack,
+            prism_components: has_patches,
         },
-    })
+    }
 }
 
 /// A user icon in Prism's icon folder: `<key>.<ext>`. Built-in keys like
@@ -260,6 +297,8 @@ struct Component {
     version: Option<String>,
     #[serde(default)]
     cached_name: Option<String>,
+    #[serde(default)]
+    disabled: bool,
 }
 
 /// Components that need nothing from us: LWJGL comes with the version JSON,
@@ -273,11 +312,17 @@ const PASSIVE_COMPONENTS: &[&str] = &[
 
 impl MmcPack {
     /// Game version, loader and loader version, or why Onyx can't run it.
+    /// With `components` (the instance has its own patches) it launches from
+    /// its Prism profile, so components Onyx has no native support for are
+    /// fine and the loader is only for display and content filtering.
     #[allow(clippy::type_complexity)]
-    fn target(&self) -> Result<(Option<String>, Option<Loader>, Option<String>), String> {
+    fn target(
+        &self,
+        components: bool,
+    ) -> Result<(Option<String>, Option<Loader>, Option<String>), String> {
         let mut game = None;
         let mut loader = None;
-        for c in &self.components {
+        for c in self.components.iter().filter(|c| !c.disabled) {
             let found = match c.uid.as_str() {
                 "net.minecraft" => {
                     game = c.version.clone();
@@ -288,6 +333,7 @@ impl MmcPack {
                 "net.minecraftforge" => Loader::Forge,
                 "net.neoforged" => Loader::NeoForge,
                 uid if PASSIVE_COMPONENTS.contains(&uid) => continue,
+                _ if components => continue,
                 uid => {
                     let what = c.cached_name.as_deref().unwrap_or(uid);
                     return Err(format!("it uses {what}, which Onyx doesn't support"));
@@ -300,7 +346,10 @@ impl MmcPack {
             loader = Some((found, version));
         }
         let game = game.ok_or("it has no Minecraft version")?;
-        if loader.as_ref().is_some_and(|(l, _)| *l == Loader::Forge) && before_1_13(&game) {
+        if !components
+            && loader.as_ref().is_some_and(|(l, _)| *l == Loader::Forge)
+            && before_1_13(&game)
+        {
             return Err("Forge before Minecraft 1.13 isn't supported yet".to_owned());
         }
         let (loader, version) = match loader {
@@ -387,7 +436,53 @@ const RESERVED: &[&str] = &[instance::INSTANCE_FILE, ".onyx"];
 /// Creates an Onyx instance for a Prism instance and copies its icon and
 /// settings. The game folder is copied separately with [`copy_game_folder`],
 /// so the instance can show up while that runs.
-pub fn create(onyx_root: &Path, prism: &PrismInstance) -> Result<Instance, PrismError> {
+pub fn create(
+    root: &Path,
+    onyx_root: &Path,
+    prism: &PrismInstance,
+) -> Result<Instance, PrismError> {
+    let icon = prism.icon_path.as_deref().and_then(|path| {
+        let extension = path.extension()?.to_str()?.to_owned();
+        Some((std::fs::read(path).ok()?, extension))
+    });
+    let created = create_instance(onyx_root, prism, icon)?;
+    if prism.settings.prism_components {
+        let (instances_dir, _) = launcher_dirs(root);
+        let source = instances_dir.join(&prism.folder);
+        let target = profile::profile_dir(&instance::instance_dir(onyx_root, &created.id)?);
+        copy_profile(&source, &target)?;
+    }
+    Ok(created)
+}
+
+/// Copies `mmc-pack.json`, `patches/*.json` and `libraries/*` (flat, files
+/// only) from a Prism instance folder.
+fn copy_profile(source: &Path, target: &Path) -> Result<(), PrismError> {
+    for sub in ["patches", "libraries"] {
+        let to = target.join(sub);
+        std::fs::create_dir_all(&to).map_err(io_err(&to))?;
+        let from = source.join(sub);
+        let Ok(entries) = std::fs::read_dir(&from) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            if entry.file_type().is_ok_and(|t| t.is_file()) {
+                let path = entry.path();
+                std::fs::copy(&path, to.join(entry.file_name())).map_err(io_err(&path))?;
+            }
+        }
+    }
+    let pack = source.join("mmc-pack.json");
+    std::fs::copy(&pack, target.join("mmc-pack.json")).map_err(io_err(&pack))?;
+    Ok(())
+}
+
+/// The instance itself, with its icon (bytes and extension) and settings.
+fn create_instance(
+    onyx_root: &Path,
+    prism: &PrismInstance,
+    icon: Option<(Vec<u8>, String)>,
+) -> Result<Instance, PrismError> {
     if let Some(reason) = &prism.unsupported {
         return Err(PrismError::Unsupported {
             name: prism.name.clone(),
@@ -411,25 +506,24 @@ pub fn create(onyx_root: &Path, prism: &PrismInstance) -> Result<Instance, Prism
             icon_config: None,
         },
     )?;
-    let mut created = match &prism.icon_path {
-        Some(path) => set_icon(onyx_root, &created.id, path).unwrap_or(created),
+    let mut created = match icon {
+        Some((bytes, extension)) => instance::set_icon(onyx_root, &created.id, &bytes, &extension)
+            .inspect_err(|e| tracing::warn!("not importing the icon of {}: {e}", prism.name))
+            .unwrap_or(created),
         None => created,
     };
     created.last_played = prism.last_played;
     created.played_secs = prism.played_secs;
     created.max_memory_mb = prism.settings.max_memory_mb;
     created.java_path = prism.settings.java_path.clone();
-    created.pack = prism.settings.pack.clone();
+    // A pack update would install Onyx's own loader setup over a profile it
+    // can't change, so component instances don't track their pack.
+    if !prism.settings.prism_components {
+        created.pack = prism.settings.pack.clone();
+    }
+    created.prism_components = prism.settings.prism_components;
     instance::save(onyx_root, &created)?;
     Ok(created)
-}
-
-fn set_icon(onyx_root: &Path, id: &str, path: &Path) -> Option<Instance> {
-    let extension = path.extension()?.to_str()?;
-    let bytes = std::fs::read(path).ok()?;
-    instance::set_icon(onyx_root, id, &bytes, extension)
-        .inspect_err(|e| tracing::warn!("not importing icon {}: {e}", path.display()))
-        .ok()
 }
 
 /// Copies a Prism instance's game folder (saves, mods, config, ...) into an
@@ -503,8 +597,9 @@ pub async fn copy_game_folder(
 mod tests {
     use super::*;
 
+    #[allow(clippy::type_complexity)]
     fn pack(json: &str) -> Result<(Option<String>, Option<Loader>, Option<String>), String> {
-        serde_json::from_str::<MmcPack>(json).unwrap().target()
+        serde_json::from_str::<MmcPack>(json).unwrap().target(false)
     }
 
     #[test]
@@ -544,6 +639,26 @@ mod tests {
         );
         assert!(lite.unwrap_err().contains("LiteLoader"));
         assert!(pack(r#"{"components":[]}"#).is_err());
+    }
+
+    #[test]
+    fn component_instances_allow_what_native_ones_cant() {
+        let gtnh: MmcPack = serde_json::from_str(
+            r#"{"components":[{"uid":"org.lwjgl3","version":"3.4.3"},
+                {"uid":"net.minecraft","version":"1.7.10"},
+                {"uid":"me.eigenraven.lwjgl3ify.forgepatches"},
+                {"uid":"net.minecraftforge","version":"10.13.4.1614"}]}"#,
+        )
+        .unwrap();
+        assert!(gtnh.target(false).is_err());
+        assert_eq!(
+            gtnh.target(true),
+            Ok((
+                Some("1.7.10".into()),
+                Some(Loader::Forge),
+                Some("10.13.4.1614".into())
+            ))
+        );
     }
 
     #[test]
@@ -608,7 +723,7 @@ mod tests {
         assert_eq!(prism_instance.unsupported, None);
         assert_eq!(prism_instance.pack_platform.as_deref(), Some("Modrinth"));
 
-        let created = create(onyx.path(), prism_instance).unwrap();
+        let created = create(root, onyx.path(), prism_instance).unwrap();
         assert_eq!(created.loader, Loader::NeoForge);
         assert_eq!(created.loader_version.as_deref(), Some("21.1.259"));
         assert_eq!(created.max_memory_mb, Some(6144));
