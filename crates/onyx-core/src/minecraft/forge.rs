@@ -473,7 +473,9 @@ async fn run_processors(
             .arg(&main_class)
             .args(&args)
             .current_dir(work_dir)
-            .stdin(std::process::Stdio::null());
+            .stdin(std::process::Stdio::null())
+            // A cancelled install shouldn't leave a processor running.
+            .kill_on_drop(true);
         #[cfg(windows)]
         {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;

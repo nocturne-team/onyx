@@ -16,7 +16,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
-use crate::instances::{Game, GameState, Phase, emit};
+use crate::instances::{AbortOnDrop, Game, GameState, Phase, emit};
 
 /// Installs a project (and its required dependencies) into an instance.
 #[tauri::command]
@@ -383,29 +383,30 @@ fn start_pack_install(
         },
     );
 
-    tauri::async_runtime::spawn(async move {
-        let progress = Arc::new(Progress::default());
-        let ticker = {
-            let (app, id, progress, stage) =
-                (app.clone(), id.clone(), progress.clone(), stage.clone());
-            tokio::spawn(async move {
-                loop {
-                    emit(
-                        &app,
-                        GameState {
-                            id: id.clone(),
-                            phase: Some(Phase::Preparing),
-                            stage: Some(stage.clone()),
-                            progress: Some(progress.snapshot()),
-                            error: None,
-                        },
-                    );
-                    tokio::time::sleep(Duration::from_millis(250)).await;
-                }
-            })
-        };
-        let http = app.state::<AppState>().modrinth.http().clone();
-        let result = async {
+    let work = {
+        let (app, id) = (app.clone(), id.clone());
+        tokio::spawn(async move {
+            let progress = Arc::new(Progress::default());
+            let _ticker = AbortOnDrop({
+                let (app, id, progress, stage) =
+                    (app.clone(), id.clone(), progress.clone(), stage.clone());
+                tokio::spawn(async move {
+                    loop {
+                        emit(
+                            &app,
+                            GameState {
+                                id: id.clone(),
+                                phase: Some(Phase::Preparing),
+                                stage: Some(stage.clone()),
+                                progress: Some(progress.snapshot()),
+                                error: None,
+                            },
+                        );
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                })
+            });
+            let http = app.state::<AppState>().modrinth.http().clone();
             let game_dir = instance::instance_dir(&root, &id).map_err(|e| e.to_string())?;
             modpack::install(&http, &mrpack, &index, &game_dir, &progress)
                 .await
@@ -417,13 +418,24 @@ fn start_pack_install(
             instance.loader_version = target.loader_version;
             instance.pack = pack;
             instance::save(&root, &instance).map_err(|e| e.to_string())
-        }
-        .await;
-        ticker.abort();
+        })
+    };
+    if let Some(game) = state.games.lock().unwrap().get_mut(&id) {
+        game.abort = Some(work.abort_handle());
+    }
+
+    tauri::async_runtime::spawn(async move {
+        let error = match work.await {
+            Ok(result) => result.err(),
+            Err(e) if e.is_cancelled() => {
+                Some("cancelled; the instance may be incomplete, so update or delete it".to_owned())
+            }
+            Err(e) => Some(e.to_string()),
+        };
         if let Some(path) = cleanup {
             let _ = tokio::fs::remove_file(path).await;
         }
-        finish_install(&app, &id, result.err());
+        finish_install(&app, &id, error);
     });
 }
 

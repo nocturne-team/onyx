@@ -54,11 +54,23 @@ pub struct GameState {
 pub struct Game {
     pub phase: Option<Phase>,
     pub stage: Option<String>,
+    /// Stops the running game.
     pub kill: Option<oneshot::Sender<()>>,
+    /// Cancels preparing (downloads, loader install, modpack install).
+    pub abort: Option<tokio::task::AbortHandle>,
     pub log: VecDeque<String>,
 }
 
 pub type Games = Mutex<HashMap<String, Game>>;
+
+/// Aborts a background task when dropped.
+pub(crate) struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
 
 fn root(state: &AppState) -> &PathBuf {
     &state.paths.instances
@@ -360,16 +372,17 @@ pub fn game_log(state: State<'_, AppState>, id: String) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Stops a running game, or cancels one that's still preparing.
 #[tauri::command]
 pub fn stop_game(state: State<'_, AppState>, id: String) {
-    if let Some(kill) = state
-        .games
-        .lock()
-        .unwrap()
-        .get_mut(&id)
-        .and_then(|g| g.kill.take())
-    {
+    let mut games = state.games.lock().unwrap();
+    let Some(game) = games.get_mut(&id) else {
+        return;
+    };
+    if let Some(kill) = game.kill.take() {
         let _ = kill.send(());
+    } else if let Some(abort) = game.abort.take() {
+        abort.abort();
     }
 }
 
@@ -397,7 +410,37 @@ pub async fn launch_instance(
     }
     state.last_logs.lock().unwrap().remove(&id);
 
-    match prepare_and_spawn(&app, &state, &id).await {
+    // Preparing runs as its own task so Stop can abort it.
+    let task = {
+        let (app, id) = (app.clone(), id.clone());
+        tokio::spawn(async move {
+            let state = app.state::<AppState>();
+            prepare_and_spawn(&app, &state, &id).await
+        })
+    };
+    if let Some(game) = state.games.lock().unwrap().get_mut(&id) {
+        game.abort = Some(task.abort_handle());
+    }
+    let result = match task.await {
+        Ok(result) => result,
+        Err(e) if e.is_cancelled() => {
+            state.games.lock().unwrap().remove(&id);
+            emit(
+                &app,
+                GameState {
+                    id: id.clone(),
+                    phase: None,
+                    stage: None,
+                    progress: None,
+                    error: None,
+                },
+            );
+            return Ok(());
+        }
+        Err(e) => Err(format!("preparing the game failed: {e}")),
+    };
+
+    match result {
         Ok(()) => Ok(()),
         Err(error) => {
             state.games.lock().unwrap().remove(&id);
@@ -476,7 +519,8 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
     // Progress is polled and emitted on a timer rather than per file.
     let progress = Arc::new(Progress::default());
     let stage = Arc::new(Mutex::new(String::new()));
-    let ticker = {
+    // Stops with the surrounding future, including when preparing is aborted.
+    let ticker = AbortOnDrop({
         let (app, id, progress, stage) =
             (app.clone(), id.to_owned(), progress.clone(), stage.clone());
         tokio::spawn(async move {
@@ -495,7 +539,7 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
                 );
             }
         })
-    };
+    });
     let result = async {
         let (component, major) = version
             .java_version
@@ -582,7 +626,7 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
         Ok::<_, String>((java, forge_version))
     }
     .await;
-    ticker.abort();
+    drop(ticker);
     let (java, forge_version) = result?;
     if let Some(forge_version) = forge_version {
         version = forge::merge(version, forge_version);
