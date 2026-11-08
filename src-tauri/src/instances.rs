@@ -121,6 +121,22 @@ fn set_icon_from_file(
     instance::set_icon(root(state), id, &bytes, extension).map_err(|e| e.to_string())
 }
 
+/// Sets the instance's max memory; `None` uses the default from Settings.
+#[tauri::command]
+pub fn set_instance_memory(
+    state: State<'_, AppState>,
+    id: String,
+    max_memory_mb: Option<u32>,
+) -> Result<Instance, String> {
+    if max_memory_mb.is_some_and(|mb| !onyx_core::settings::MEMORY_RANGE_MB.contains(&mb)) {
+        return Err("memory must be between 512 MB and 64 GB".into());
+    }
+    let mut instance = instance::load(root(&state), &id).map_err(|e| e.to_string())?;
+    instance.max_memory_mb = max_memory_mb;
+    instance::save(root(&state), &instance).map_err(|e| e.to_string())?;
+    Ok(instance)
+}
+
 /// Copies an image file in as the instance's icon.
 #[tauri::command]
 pub fn set_instance_icon(
@@ -529,7 +545,9 @@ async fn prepare_and_spawn(app: &AppHandle, state: &AppState, id: &str) -> Resul
         game_dir: game_dir.clone(),
         account: &account,
         client_id: config::MSA_CLIENT_ID.unwrap_or_default(),
-        max_memory_mb: instance.max_memory_mb,
+        max_memory_mb: instance
+            .max_memory_mb
+            .or(state.settings.lock().unwrap().default_memory_mb),
         launcher_version: config::VERSION,
     };
     let mut child = launch::command(&spec)

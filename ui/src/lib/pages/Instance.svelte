@@ -9,6 +9,7 @@
     Palette,
     RefreshCw,
     ScrollText,
+    SlidersHorizontal,
     Tag,
     Trash2,
     TriangleAlert,
@@ -21,6 +22,8 @@
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
   import IconEditor from "../components/IconEditor.svelte";
+  import MemorySetting from "../components/MemorySetting.svelte";
+  import { appInfo, settings } from "../settings/store.svelte";
   import { checkPackUpdate, updateModpack, type PackUpdate } from "../content.svelte";
   import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
   import {
@@ -32,6 +35,7 @@
     type ContentKind,
     setInstanceIcon,
     setInstanceIconConfig,
+    setInstanceMemory,
   } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
 
@@ -41,7 +45,9 @@
   const game = $derived(instances.games[id]);
   const error = $derived(instances.errors[id]);
 
-  let tab = $state<"content" | "logs">("content");
+  let tab = $state<"content" | "logs" | "options">("content");
+  let optionsError = $state<string | null>(null);
+  const info = appInfo();
   let contentKind = $state<ContentKind>("mods");
   // Vanilla can't load mods, so it starts on resource packs.
   $effect(() => {
@@ -298,6 +304,9 @@
       <button class:active={tab === "logs"} onclick={() => (tab = "logs")}>
         <ScrollText size={17} /> Logs
       </button>
+      <button class:active={tab === "options"} onclick={() => (tab = "options")}>
+        <SlidersHorizontal size={17} /> Options
+      </button>
     </nav>
 
     {#if tab === "content"}
@@ -307,6 +316,23 @@
         {/each}
       </div>
       <ContentList {id} kind={contentKind} />
+    {:else if tab === "options"}
+      <section class="options">
+        <h3>Memory</h3>
+        <p class="muted">Takes effect the next time the game starts.</p>
+        {#await info then { totalMemoryMb }}
+          <MemorySetting
+            value={instance.maxMemoryMb}
+            fallbackLabel={settings.defaultMemoryMb
+              ? `the default from Settings (${(settings.defaultMemoryMb / 1024).toFixed(1)} GB)`
+              : "the default from Settings (Mojang's recommendation)"}
+            totalMb={totalMemoryMb}
+            onChange={(value) =>
+              setInstanceMemory(id, value).catch((e) => (optionsError = String(e)))}
+          />
+        {/await}
+        {#if optionsError}<p class="error-text">{optionsError}</p>{/if}
+      </section>
     {:else}
       <pre class="log" bind:this={logEl} onscroll={onScroll}></pre>
     {/if}
@@ -562,6 +588,20 @@
     color: var(--text-strong);
   }
 
+
+  .options {
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px;
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+  }
+
+  .options h3 {
+    color: var(--text-strong);
+  }
 
   .log {
     flex: 1;

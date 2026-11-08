@@ -106,6 +106,7 @@ fn main() {
             instances::list_instances,
             instances::create_instance,
             instances::set_instance_icon,
+            instances::set_instance_memory,
             instances::set_instance_icon_config,
             instances::instance_icon,
             instances::image_preview,

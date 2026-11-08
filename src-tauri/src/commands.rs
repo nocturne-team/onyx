@@ -12,6 +12,8 @@ use crate::AppState;
 pub struct AppInfo {
     version: &'static str,
     os: String,
+    /// Physical memory, for the memory sliders. `None` if unknown.
+    total_memory_mb: Option<u64>,
 }
 
 #[tauri::command]
@@ -20,6 +22,7 @@ pub fn app_info() -> AppInfo {
     AppInfo {
         version: config::VERSION,
         os: format!("{} {}", os.os_type(), os.version()),
+        total_memory_mb: onyx_core::settings::total_memory_mb(),
     }
 }
 
@@ -30,6 +33,12 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 
 #[tauri::command]
 pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+    if settings
+        .default_memory_mb
+        .is_some_and(|mb| !onyx_core::settings::MEMORY_RANGE_MB.contains(&mb))
+    {
+        return Err("memory must be between 512 MB and 64 GB".into());
+    }
     let path = paths::settings_file().ok_or("could not find a data directory")?;
     settings.save(&path).map_err(|e| e.to_string())?;
     *state.settings.lock().unwrap() = settings;

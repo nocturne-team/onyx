@@ -225,6 +225,11 @@ export async function setInstanceIcon(id: string, path: string) {
   await loadInstances();
 }
 
+export async function setInstanceMemory(id: string, maxMemoryMb: number | null) {
+  await invoke("set_instance_memory", { id, maxMemoryMb });
+  await loadInstances();
+}
+
 export async function setInstanceIconConfig(id: string, config: IconConfig) {
   await invoke("set_instance_icon_config", { id, config });
   await loadInstances();

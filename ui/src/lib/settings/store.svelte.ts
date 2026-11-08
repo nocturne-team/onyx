@@ -6,16 +6,20 @@ export type Theme = "dark" | "light" | "oled" | "system";
 export interface Settings {
   theme: Theme;
   advancedRendering: boolean;
+  /** Megabytes; null means Mojang's recommendation per version. */
+  defaultMemoryMb: number | null;
 }
 
 export interface AppInfo {
   version: string;
   os: string;
+  totalMemoryMb: number | null;
 }
 
 export const settings = $state<Settings>({
   theme: "dark",
   advancedRendering: true,
+  defaultMemoryMb: null,
 });
 
 export async function loadSettings() {
@@ -34,6 +38,6 @@ export async function updateSettings(patch: Partial<Settings>) {
 }
 
 export async function appInfo(): Promise<AppInfo> {
-  if (!isTauri()) return { version: "dev", os: "browser" };
+  if (!isTauri()) return { version: "dev", os: "browser", totalMemoryMb: null };
   return invoke<AppInfo>("app_info");
 }

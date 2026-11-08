@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MemorySetting from "../components/MemorySetting.svelte";
   import {
     Coffee,
     Gamepad2,
@@ -119,6 +120,17 @@
               <span></span>
             </button>
           </div>
+        {:else if active === "instance"}
+          <h3>Memory</h3>
+          <p class="hint">Maximum memory for instances that don't set their own.</p>
+          {#await info then { totalMemoryMb }}
+            <MemorySetting
+              value={settings.defaultMemoryMb}
+              fallbackLabel="Mojang's recommendation for each version"
+              totalMb={totalMemoryMb}
+              onChange={(value) => updateSettings({ defaultMemoryMb: value })}
+            />
+          {/await}
         {:else}
           <p class="hint">Not built yet.</p>
         {/if}

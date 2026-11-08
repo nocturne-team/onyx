@@ -19,6 +19,9 @@ pub struct Settings {
     pub theme: Theme,
     /// Blur and other effects that need hardware-accelerated rendering.
     pub advanced_rendering: bool,
+    /// Max heap for instances without their own setting. `None` means
+    /// Mojang's recommendation for the version (or 2 GB for old versions).
+    pub default_memory_mb: Option<u32>,
 }
 
 impl Default for Settings {
@@ -26,7 +29,33 @@ impl Default for Settings {
         Self {
             theme: Theme::Dark,
             advanced_rendering: true,
+            default_memory_mb: None,
         }
+    }
+}
+
+/// Memory settings outside this range are refused, in megabytes.
+pub const MEMORY_RANGE_MB: std::ops::RangeInclusive<u32> = 512..=65536;
+
+/// Total physical memory in megabytes, for sizing the memory slider.
+/// `None` where we don't know how to read it.
+pub fn total_memory_mb() -> Option<u64> {
+    #[cfg(target_os = "linux")]
+    {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let kb: u64 = meminfo
+            .lines()
+            .find_map(|line| line.strip_prefix("MemTotal:"))?
+            .trim()
+            .trim_end_matches("kB")
+            .trim()
+            .parse()
+            .ok()?;
+        Some(kb / 1024)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
     }
 }
 
@@ -66,6 +95,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn memory_is_readable_here() {
+        if cfg!(target_os = "linux") {
+            assert!(total_memory_mb().is_some_and(|mb| mb > 256));
+        }
+    }
+
+    #[test]
     fn missing_file_gives_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let settings = Settings::load(&dir.path().join("settings.json")).unwrap();
@@ -79,6 +115,7 @@ mod tests {
         let settings = Settings {
             theme: Theme::Oled,
             advanced_rendering: false,
+            default_memory_mb: Some(6144),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
