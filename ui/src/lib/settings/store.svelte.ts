@@ -1,10 +1,25 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-export type Theme = "dark" | "light" | "oled" | "system";
+export type Theme =
+  | "dark"
+  | "light"
+  | "oled"
+  | "system"
+  | "gruvbox-dark"
+  | "gruvbox-light"
+  | "ayu-dark"
+  | "ayu-mirage"
+  | "ayu-light"
+  | "catppuccin-latte"
+  | "catppuccin-frappe"
+  | "catppuccin-macchiato"
+  | "catppuccin-mocha";
 
 /** Mirrors `onyx_core::Settings`. */
 export interface Settings {
   theme: Theme;
+  /** Accent id from `lib/themes.ts`; null means the theme's default. */
+  accent: string | null;
   advancedRendering: boolean;
   /** Megabytes; null means Mojang's recommendation per version. */
   defaultMemoryMb: number | null;
@@ -26,6 +41,7 @@ export interface AppInfo {
 
 export const settings = $state<Settings>({
   theme: "dark",
+  accent: null,
   advancedRendering: true,
   defaultMemoryMb: null,
   javaOverrides: {},

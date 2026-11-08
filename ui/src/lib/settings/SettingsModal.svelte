@@ -13,7 +13,8 @@
     Sun,
     X,
   } from "@lucide/svelte";
-  import { appInfo, settings, updateSettings, type Theme } from "./store.svelte";
+  import { appInfo, settings, updateSettings } from "./store.svelte";
+  import { familyOf, families, resolveTheme } from "../themes";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -26,12 +27,11 @@
     { id: "resources", label: "Resource management", icon: Gauge },
   ] as const;
 
-  const themes: { id: Theme; label: string; preview: "dark" | "light" | "oled" }[] = [
-    { id: "dark", label: "Dark", preview: "dark" },
-    { id: "light", label: "Light", preview: "light" },
-    { id: "oled", label: "OLED", preview: "oled" },
-    { id: "system", label: "Sync with system", preview: "dark" },
-  ];
+  const family = $derived(familyOf(settings.theme));
+  // An accent the current theme doesn't have shows (and renders) as its default.
+  const accent = $derived(
+    family.accents.find((a) => a.id === settings.accent)?.id ?? family.accents[0].id,
+  );
 
   // Speed cap presets in KiB/s, picked with a slider.
   const speedSteps = [256, 512, 1024, 2048, 5120, 10240, 25600, 51200];
@@ -98,27 +98,51 @@
         {#if active === "appearance"}
           <h3>Color theme</h3>
           <p class="hint">Select your preferred color theme for Onyx.</p>
-          <div class="themes">
-            {#each themes as theme (theme.id)}
-              <button
-                class="theme"
-                class:selected={settings.theme === theme.id}
-                aria-pressed={settings.theme === theme.id}
-                onclick={() => updateSettings({ theme: theme.id })}
-              >
-                <div class="preview" data-theme={theme.preview}>
-                  <div class="mini-card">
-                    <div class="mini-icon"></div>
-                    <div class="mini-lines"><span></span><span></span></div>
+          {#each families as group (group.label)}
+            <h4 class="family">{group.label}</h4>
+            <div class="themes">
+              {#each group.themes as theme (theme.id)}
+                <button
+                  class="theme"
+                  class:selected={settings.theme === theme.id}
+                  aria-pressed={settings.theme === theme.id}
+                  onclick={() => updateSettings({ theme: theme.id })}
+                >
+                  <div
+                    class="preview"
+                    data-theme={resolveTheme(theme.id, true)}
+                    data-accent={settings.accent ?? undefined}
+                  >
+                    <div class="mini-card">
+                      <div class="mini-icon"></div>
+                      <div class="mini-lines"><span></span><span></span></div>
+                    </div>
                   </div>
-                </div>
-                <div class="theme-label">
-                  <span class="radio"></span>
-                  {theme.label}
-                  {#if theme.id === "dark"}<Moon size={15} />{/if}
-                  {#if theme.id === "light"}<Sun size={15} />{/if}
-                </div>
-              </button>
+                  <div class="theme-label">
+                    <span class="radio"></span>
+                    {theme.label}
+                    {#if theme.id === "dark"}<Moon size={15} />{/if}
+                    {#if theme.id === "light"}<Sun size={15} />{/if}
+                  </div>
+                </button>
+              {/each}
+            </div>
+          {/each}
+
+          <h3>Accent color</h3>
+          <p class="hint">Accents come from the {family.label} palette.</p>
+          <div class="accents" role="radiogroup" aria-label="Accent color">
+            {#each family.accents as option (option.id)}
+              <button
+                class="accent"
+                class:selected={accent === option.id}
+                role="radio"
+                aria-checked={accent === option.id}
+                title={option.label}
+                aria-label={option.label}
+                style="--swatch: var(--a-{option.id})"
+                onclick={() => updateSettings({ accent: option.id })}
+              ></button>
             {/each}
           </div>
 
@@ -361,14 +385,23 @@
     color: var(--text-muted);
   }
 
+  .family {
+    margin: 0 0 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
   .themes {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
     gap: 12px;
-    margin-bottom: 28px;
+    margin-bottom: 20px;
   }
 
   .theme {
+    display: flex;
+    flex-direction: column;
     border-radius: var(--radius);
     overflow: hidden;
     background: var(--bg-button);
@@ -381,7 +414,7 @@
   }
 
   .preview {
-    padding: 24px 20px;
+    padding: 18px 16px;
     background: var(--bg);
   }
 
@@ -398,7 +431,7 @@
     width: 26px;
     height: 26px;
     border-radius: 6px;
-    background: var(--bg-button);
+    background: var(--brand);
   }
 
   .mini-lines {
@@ -437,6 +470,27 @@
   .selected .radio {
     border-color: var(--brand);
     background: radial-gradient(var(--brand) 40%, transparent 45%);
+  }
+
+  .accents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+
+  .accent {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 2px var(--bg-raised);
+  }
+
+  .accent.selected {
+    box-shadow:
+      0 0 0 2px var(--bg-raised),
+      0 0 0 4px var(--swatch);
   }
 
   .java-row {

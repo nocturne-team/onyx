@@ -5,19 +5,43 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum Theme {
     #[default]
     Dark,
     Light,
     Oled,
     System,
+    GruvboxDark,
+    GruvboxLight,
+    AyuDark,
+    AyuMirage,
+    AyuLight,
+    CatppuccinLatte,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    CatppuccinMocha,
+}
+
+/// Falls back to the default instead of failing the whole file, so a theme
+/// from a newer version (or a removed one) doesn't reset every setting.
+fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(T::deserialize(value).unwrap_or_default())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
+    #[serde(deserialize_with = "or_default")]
     pub theme: Theme,
+    /// Accent color id (`ui/src/lib/themes.ts`). `None`, or one the theme
+    /// doesn't have, means the theme's own default.
+    pub accent: Option<String>,
     /// Blur and other effects that need hardware-accelerated rendering.
     pub advanced_rendering: bool,
     /// Max heap for instances without their own setting. `None` means
@@ -37,6 +61,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: Theme::Dark,
+            accent: None,
             advanced_rendering: true,
             default_memory_mb: None,
             java_overrides: BTreeMap::new(),
@@ -139,7 +164,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("nested/settings.json");
         let settings = Settings {
-            theme: Theme::Oled,
+            theme: Theme::CatppuccinMocha,
+            accent: Some("lavender".into()),
             advanced_rendering: false,
             default_memory_mb: Some(6144),
             java_overrides: BTreeMap::from([(21, PathBuf::from("/usr/lib/jvm/java-21/bin/java"))]),
@@ -160,6 +186,25 @@ mod tests {
         let settings = Settings::load(&path).unwrap();
         assert_eq!(settings.theme, Theme::Light);
         assert!(settings.advanced_rendering);
+    }
+
+    #[test]
+    fn unknown_theme_falls_back_without_losing_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"theme":"solarized","maxConcurrentDownloads":3}"#).unwrap();
+        let settings = Settings::load(&path).unwrap();
+        assert_eq!(settings.theme, Theme::Dark);
+        assert_eq!(settings.max_concurrent_downloads, 3);
+    }
+
+    #[test]
+    fn theme_ids_are_kebab_case() {
+        assert_eq!(
+            serde_json::to_string(&Theme::CatppuccinFrappe).unwrap(),
+            r#""catppuccin-frappe""#
+        );
+        assert_eq!(serde_json::to_string(&Theme::Oled).unwrap(), r#""oled""#);
     }
 
     #[test]

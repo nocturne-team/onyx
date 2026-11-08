@@ -16,6 +16,7 @@
   import { library } from "./lib/pages/libraryState.svelte";
   import { restoreSession } from "./lib/account.svelte";
   import { initInstances } from "./lib/instances.svelte";
+  import { resolveTheme } from "./lib/themes";
   import { loadMinecraftAccounts } from "./lib/minecraft.svelte";
   import { initInvites, invites } from "./lib/invites.svelte";
 
@@ -48,8 +49,9 @@
 
   $effect(() => {
     const root = document.documentElement;
-    root.dataset.theme =
-      settings.theme === "system" ? (prefersDark ? "dark" : "light") : settings.theme;
+    root.dataset.theme = resolveTheme(settings.theme, prefersDark);
+    if (settings.accent) root.dataset.accent = settings.accent;
+    else delete root.dataset.accent;
     root.dataset.advanced = String(settings.advancedRendering);
   });
 </script>
