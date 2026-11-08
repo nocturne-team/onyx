@@ -4,7 +4,7 @@
   import InstallButton from "../components/InstallButton.svelte";
   import InstanceIcon from "../components/InstanceIcon.svelte";
   import ProjectRow from "../components/ProjectRow.svelte";
-  import { instanceById, loaderNames, type Instance } from "../instances.svelte";
+  import { gameVersions, instanceById, loaderNames, type Instance } from "../instances.svelte";
   import { openInstance } from "../navigation.svelte";
   import type { ProjectType, SearchIndex } from "../modrinth";
   import { browse, loadMore, runSearch } from "./browse.svelte";
@@ -28,6 +28,31 @@
 
   const loaderLabel = (loader: string) => loaderNames[loader as Instance["loader"]] ?? loader;
 
+  // Modrinth tags loaders as categories; shaders use their own "loaders".
+  const loaderOptions: Record<string, [string, string][]> = {
+    mod: [
+      ["fabric", "Fabric"],
+      ["neoforge", "NeoForge"],
+      ["forge", "Forge"],
+      ["quilt", "Quilt"],
+    ],
+    modpack: [
+      ["fabric", "Fabric"],
+      ["neoforge", "NeoForge"],
+      ["forge", "Forge"],
+      ["quilt", "Quilt"],
+    ],
+    shader: [
+      ["iris", "Iris"],
+      ["optifine", "OptiFine"],
+      ["canvas", "Canvas"],
+      ["vanilla", "Vanilla (core shaders)"],
+    ],
+  };
+  const releases = gameVersions()
+    .then((all) => all.filter((v) => v.type === "release").map((v) => v.id))
+    .catch(() => [] as string[]);
+
   let debounce: ReturnType<typeof setTimeout> | undefined;
   function onInput() {
     clearTimeout(debounce);
@@ -36,6 +61,8 @@
 
   function setType(id: ProjectType) {
     browse.projectType = id;
+    // Loader names differ between mods and shaders.
+    if (!loaderOptions[id]?.some(([value]) => value === browse.loader)) browse.loader = "";
     runSearch();
   }
 
@@ -88,6 +115,24 @@
     </select>
   </div>
 
+  {#if !browse.target}
+    <div class="filters">
+      {#if loaderOptions[browse.projectType]}
+        <select bind:value={browse.loader} onchange={runSearch} aria-label="Loader">
+          <option value="">Any loader</option>
+          {#each loaderOptions[browse.projectType] as [value, label] (value)}
+            <option {value}>{label}</option>
+          {/each}
+        </select>
+      {/if}
+      {#await releases then list}
+        <select bind:value={browse.gameVersion} onchange={runSearch} aria-label="Game version">
+          <option value="">Any version</option>
+          {#each list as version (version)}<option value={version}>{version}</option>{/each}
+        </select>
+      {/await}
+    </div>
+  {/if}
   {#if browse.target}
     <div class="locked">
       <span title="Only showing versions for this instance"><Lock size={13} /> {browse.target.gameVersion}</span>
@@ -248,6 +293,15 @@
     height: 4px;
     border-radius: 50%;
     background: var(--text-muted);
+  }
+
+  .filters {
+    display: flex;
+    gap: 8px;
+  }
+
+  .filters select {
+    height: 34px;
   }
 
   .locked {

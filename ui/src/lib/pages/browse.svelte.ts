@@ -16,12 +16,20 @@ export const browse = $state({
    * buttons install straight into it.
    */
   target: null as { id: string; name: string; loader: string; gameVersion: string } | null,
+  /** Filters picked by hand when there's no target; "" means any. */
+  loader: "",
+  gameVersion: "",
 });
 
-/** Loader and game version facets for the target instance, if any. */
+/** Loader and game version facets: the target instance's, or the picked ones. */
 function targetFilters() {
   const target = browse.target;
-  if (!target) return {};
+  if (!target) {
+    return {
+      loaders: browse.loader && browse.projectType !== "resourcepack" ? [browse.loader] : undefined,
+      gameVersions: browse.gameVersion ? [browse.gameVersion] : undefined,
+    };
+  }
   const loaders =
     browse.projectType === "mod"
       ? target.loader === "quilt"
