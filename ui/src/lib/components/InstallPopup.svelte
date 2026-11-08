@@ -32,7 +32,7 @@
         {@const state = installs[installKey(instance.id, hit.projectId)]}
         {@const compatible = canInstallInto(instance, hit.projectType)}
         <div class="row">
-          <InstanceIcon size={40} />
+          <InstanceIcon {instance} size={40} />
           <div class="main">
             <strong>{instance.name}</strong>
             <span class="muted">

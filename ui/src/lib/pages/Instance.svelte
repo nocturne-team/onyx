@@ -3,6 +3,8 @@
     Clock,
     FolderOpen,
     Gamepad2,
+    ImageUp,
+    RefreshCw,
     Inbox,
     ScrollText,
     Tag,
@@ -16,7 +18,16 @@
   import ModList from "../components/ModList.svelte";
   import PlayButton from "../components/PlayButton.svelte";
   import { relativeTime } from "../format";
-  import { deleteInstance, instanceById, instances, loaderNames } from "../instances.svelte";
+  import { randomSeed } from "../blockIcon";
+  import {
+    deleteInstance,
+    instanceById,
+    instances,
+    loaderNames,
+    pickIconFile,
+    randomizeInstanceIcon,
+    setInstanceIcon,
+  } from "../instances.svelte";
   import { nav } from "../navigation.svelte";
 
   let { id }: { id: string } = $props();
@@ -27,6 +38,30 @@
 
   let tab = $state<"content" | "logs">("content");
   let confirmingDelete = $state(false);
+  let iconMenu = $state(false);
+  let iconError = $state<string | null>(null);
+
+  async function uploadIcon() {
+    iconMenu = false;
+    const path = await pickIconFile();
+    if (!path) return;
+    try {
+      await setInstanceIcon(id, path);
+      iconError = null;
+    } catch (e) {
+      iconError = String(e);
+    }
+  }
+
+  async function randomizeIcon() {
+    iconMenu = false;
+    try {
+      await randomizeInstanceIcon(id, randomSeed());
+      iconError = null;
+    } catch (e) {
+      iconError = String(e);
+    }
+  }
   let deleteError = $state<string | null>(null);
 
   // The log is kept outside Svelte's reactivity (it can be thousands of lines)
@@ -101,7 +136,19 @@
 {:else}
   <div class="page">
     <header>
-      <InstanceIcon size={64} />
+      <div class="icon-wrap">
+        <button class="icon-button-edit" title="Change icon" onclick={() => (iconMenu = !iconMenu)}>
+          <InstanceIcon {instance} size={64} />
+        </button>
+        {#if iconMenu}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="menu-backdrop" onclick={() => (iconMenu = false)}></div>
+          <div class="icon-menu">
+            <button onclick={uploadIcon}><ImageUp size={16} /> Upload image</button>
+            <button onclick={randomizeIcon}><RefreshCw size={16} /> Randomize</button>
+          </div>
+        {/if}
+      </div>
       <div class="title">
         <h2>{instance.name}</h2>
         <div class="meta">
@@ -156,6 +203,10 @@
           </span>
         {/if}
       </div>
+    {/if}
+
+    {#if iconError}
+      <div class="banner error"><TriangleAlert size={18} /> {iconError}</div>
     {/if}
 
     {#if error}
@@ -215,6 +266,53 @@
     gap: 16px;
     padding-bottom: 18px;
     border-bottom: 1px solid var(--border);
+  }
+
+  .icon-wrap {
+    position: relative;
+  }
+
+  .icon-button-edit {
+    display: block;
+    border-radius: 16px;
+  }
+
+  .icon-button-edit:hover {
+    filter: brightness(1.15);
+  }
+
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 4;
+  }
+
+  .icon-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 6px;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+  }
+
+  .icon-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+  }
+
+  .icon-menu button:hover {
+    background: var(--bg-button);
   }
 
   .title {

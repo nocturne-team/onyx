@@ -4,7 +4,7 @@
   import InstallButton from "../components/InstallButton.svelte";
   import InstanceIcon from "../components/InstanceIcon.svelte";
   import ProjectRow from "../components/ProjectRow.svelte";
-  import { loaderNames, type Instance } from "../instances.svelte";
+  import { instanceById, loaderNames, type Instance } from "../instances.svelte";
   import { openInstance } from "../navigation.svelte";
   import type { ProjectType, SearchIndex } from "../modrinth";
   import { browse, loadMore, runSearch } from "./browse.svelte";
@@ -57,7 +57,7 @@
       <button class="back" title="Back to {target.name}" onclick={() => openInstance(target.id)}>
         <ArrowLeft size={20} />
       </button>
-      <InstanceIcon size={52} />
+      <InstanceIcon instance={instanceById(target.id)} size={52} />
       <div>
         <h2>{target.name}</h2>
         <div class="meta">

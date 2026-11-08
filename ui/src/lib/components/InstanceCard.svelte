@@ -9,7 +9,7 @@
 
 <div class="card">
   <button class="open" onclick={() => openInstance(instance.id)}>
-    <InstanceIcon size={56} />
+    <InstanceIcon {instance} size={56} />
     <span class="text">
       <strong>{instance.name}</strong>
       <span class="muted">{loaderNames[instance.loader]} {instance.gameVersion}</span>

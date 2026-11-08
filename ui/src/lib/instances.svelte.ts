@@ -13,6 +13,9 @@ export interface Instance {
   lastPlayed: number | null;
   playedSecs: number;
   maxMemoryMb: number | null;
+  /** File name of a custom icon; `null` means a generated one. */
+  icon: string | null;
+  iconSeed: number | null;
 }
 
 export interface Progress {
@@ -94,12 +97,16 @@ export async function createInstance(
   gameVersion: string,
   loader: Instance["loader"],
   loaderVersion: string | null,
+  iconSeed: number | null,
+  iconPath: string | null,
 ): Promise<Instance> {
   const instance = await invoke<Instance>("create_instance", {
     name,
     gameVersion,
     loader,
     loaderVersion,
+    iconSeed,
+    iconPath,
   });
   await loadInstances();
   return instance;
@@ -173,4 +180,46 @@ export interface ModFile {
   name: string | null;
   version: string | null;
   description: string | null;
+}
+
+/** Custom icon data URLs by "<id>/<icon file>"; the file name changes on upload. */
+const iconUrls = $state<Record<string, string | null>>({});
+const iconRequests = new Set<string>();
+
+/** The custom icon's data URL, loaded on first use; `undefined` while loading. */
+export function customIconUrl(instance: Instance): string | null | undefined {
+  if (!instance.icon) return null;
+  const key = `${instance.id}/${instance.icon}`;
+  if (!(key in iconUrls) && !iconRequests.has(key) && isTauri()) {
+    iconRequests.add(key);
+    invoke<string | null>("instance_icon", { id: instance.id })
+      .then((url) => (iconUrls[key] = url))
+      .catch(() => (iconUrls[key] = null));
+  }
+  return iconUrls[key];
+}
+
+/** Asks for an image file. `null` if cancelled. */
+export async function pickIconFile(): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const path = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+  });
+  return typeof path === "string" ? path : null;
+}
+
+export function imagePreview(path: string): Promise<string | null> {
+  return invoke<string | null>("image_preview", { path });
+}
+
+export async function setInstanceIcon(id: string, path: string) {
+  await invoke("set_instance_icon", { id, path });
+  await loadInstances();
+}
+
+export async function randomizeInstanceIcon(id: string, seed: number) {
+  await invoke("randomize_instance_icon", { id, seed });
+  await loadInstances();
 }

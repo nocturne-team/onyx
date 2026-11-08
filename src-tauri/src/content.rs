@@ -153,7 +153,43 @@ pub async fn install_modpack(
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    start_pack_install(app, &state, path.clone(), Some(path), index)
+    let instance = start_pack_install(app, &state, path.clone(), Some(path), index)?;
+    Ok(use_project_icon(&state, &project_id, &instance)
+        .await
+        .unwrap_or(instance))
+}
+
+/// Gives a modpack instance its Modrinth project icon. Failing is fine: the
+/// instance keeps its generated icon.
+async fn use_project_icon(
+    state: &AppState,
+    project_id: &str,
+    instance: &Instance,
+) -> Option<Instance> {
+    let project = state
+        .modrinth
+        .projects(&[project_id], Some(CachePolicy::LONG))
+        .await
+        .ok()?
+        .into_iter()
+        .next()?;
+    let url = project.icon_url?;
+    let extension = url.rsplit('.').next()?.split(['?', '#']).next()?.to_owned();
+    let bytes = state
+        .modrinth
+        .http()
+        .get(&url)
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .bytes()
+        .await
+        .ok()?;
+    instance::set_icon(&state.paths.instances, &instance.id, &bytes, &extension)
+        .inspect_err(|e| tracing::warn!("no icon for {}: {e}", instance.name))
+        .ok()
 }
 
 /// Creates the instance and installs the pack in the background.
@@ -174,6 +210,7 @@ fn start_pack_install(
             game_version: target.game_version,
             loader: target.loader,
             loader_version: target.loader_version,
+            icon_seed: None,
         },
     )
     .map_err(|e| e.to_string())?;

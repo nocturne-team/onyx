@@ -72,7 +72,7 @@
         aria-label={instance.name}
         onclick={() => openInstance(instance.id)}
       >
-        <InstanceIcon size={36} />
+        <InstanceIcon {instance} size={36} />
         {#if instances.games[instance.id]}
           <span class="running" class:preparing={instances.games[instance.id].phase === "preparing"}></span>
         {/if}

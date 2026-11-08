@@ -79,20 +79,79 @@ pub fn create_instance(
     game_version: String,
     loader: Loader,
     loader_version: Option<String>,
+    icon_seed: Option<u32>,
+    icon_path: Option<PathBuf>,
 ) -> Result<Instance, String> {
     if (loader != Loader::Vanilla) != loader_version.is_some() {
         return Err("pick a loader version".into());
     }
-    instance::create(
+    let instance = instance::create(
         root(&state),
         NewInstance {
             name,
             game_version,
             loader,
             loader_version,
+            icon_seed,
         },
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    match icon_path {
+        // The instance exists either way; a bad icon file shouldn't undo that.
+        Some(path) => Ok(
+            set_icon_from_file(&state, &instance.id, &path).unwrap_or_else(|e| {
+                tracing::warn!("ignoring icon {}: {e}", path.display());
+                instance
+            }),
+        ),
+        None => Ok(instance),
+    }
+}
+
+fn set_icon_from_file(
+    state: &AppState,
+    id: &str,
+    path: &std::path::Path,
+) -> Result<Instance, String> {
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .ok_or("pick a PNG, JPEG, WebP or GIF image")?;
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    instance::set_icon(root(state), id, &bytes, extension).map_err(|e| e.to_string())
+}
+
+/// Copies an image file in as the instance's icon.
+#[tauri::command]
+pub fn set_instance_icon(
+    state: State<'_, AppState>,
+    id: String,
+    path: PathBuf,
+) -> Result<Instance, String> {
+    set_icon_from_file(&state, &id, &path)
+}
+
+/// Switches to a generated icon with this seed, dropping any custom icon.
+#[tauri::command]
+pub fn randomize_instance_icon(
+    state: State<'_, AppState>,
+    id: String,
+    seed: u32,
+) -> Result<Instance, String> {
+    instance::set_icon_seed(root(&state), &id, seed).map_err(|e| e.to_string())
+}
+
+/// Preview of an image the user picked, before it's saved anywhere.
+#[tauri::command]
+pub fn image_preview(path: PathBuf) -> Option<String> {
+    instance::image_data_url(&path)
+}
+
+/// The instance's custom icon as a data URL, or `None` for generated icons.
+#[tauri::command]
+pub fn instance_icon(state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
+    let instance = instance::load(root(&state), &id).map_err(|e| e.to_string())?;
+    Ok(instance::icon_data_url(root(&state), &instance))
 }
 
 /// Game versions a loader supports.

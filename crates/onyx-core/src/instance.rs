@@ -39,7 +39,19 @@ pub struct Instance {
     pub played_secs: u64,
     #[serde(default)]
     pub max_memory_mb: Option<u32>,
+    /// File name of a custom icon inside the instance folder (`icon-<time>.<ext>`;
+    /// the name changes on every upload so the UI never shows a stale one).
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// Seed for the generated icon shown when there's no custom one. `None`
+    /// means "derive it from the id".
+    #[serde(default)]
+    pub icon_seed: Option<u32>,
 }
+
+/// Image types accepted as instance icons.
+pub const ICON_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
+const MAX_ICON_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstanceError {
@@ -59,6 +71,8 @@ pub enum InstanceError {
     EmptyName,
     #[error("no instance called {0}")]
     NotFound(String),
+    #[error("icons must be PNG, JPEG, WebP or GIF images under 4 MB")]
+    BadIcon,
 }
 
 fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> InstanceError + '_ {
@@ -120,6 +134,7 @@ pub struct NewInstance {
     pub game_version: String,
     pub loader: Loader,
     pub loader_version: Option<String>,
+    pub icon_seed: Option<u32>,
 }
 
 /// Creates the folder and `instance.json`. The game itself is installed on
@@ -140,9 +155,94 @@ pub fn create(root: &Path, new: NewInstance) -> Result<Instance, InstanceError> 
         last_played: None,
         played_secs: 0,
         max_memory_mb: None,
+        icon: None,
+        icon_seed: new.icon_seed,
     };
     save(root, &instance)?;
     Ok(instance)
+}
+
+/// The custom icon's path, if the instance has one. Ignores names that
+/// don't look like ours, in case `instance.json` was edited by hand.
+pub fn icon_path(root: &Path, instance: &Instance) -> Option<PathBuf> {
+    let name = instance.icon.as_deref()?;
+    let valid = name.starts_with("icon-") && !name.contains(['/', '\\']) && !name.contains("..");
+    valid.then(|| root.join(&instance.id).join(name))
+}
+
+/// Stores `bytes` as the instance's icon, replacing any previous one.
+pub fn set_icon(
+    root: &Path,
+    id: &str,
+    bytes: &[u8],
+    extension: &str,
+) -> Result<Instance, InstanceError> {
+    let extension = extension.to_ascii_lowercase();
+    if !ICON_EXTENSIONS.contains(&extension.as_str())
+        || bytes.is_empty()
+        || bytes.len() > MAX_ICON_BYTES
+    {
+        return Err(InstanceError::BadIcon);
+    }
+    let mut instance = load(root, id)?;
+    let dir = instance_dir(root, id)?;
+    let name = format!("icon-{}.{extension}", now_millis());
+    let path = dir.join(&name);
+    std::fs::write(&path, bytes).map_err(io_err(&path))?;
+    let old = icon_path(root, &instance);
+    instance.icon = Some(name);
+    save(root, &instance)?;
+    if let Some(old) = old {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(instance)
+}
+
+/// Drops the custom icon and switches to a generated one with `seed`.
+pub fn set_icon_seed(root: &Path, id: &str, seed: u32) -> Result<Instance, InstanceError> {
+    let mut instance = load(root, id)?;
+    let old = icon_path(root, &instance);
+    instance.icon = None;
+    instance.icon_seed = Some(seed);
+    save(root, &instance)?;
+    if let Some(old) = old {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(instance)
+}
+
+/// The custom icon as a `data:` URL, small enough to hand to the webview.
+pub fn icon_data_url(root: &Path, instance: &Instance) -> Option<String> {
+    image_data_url(&icon_path(root, instance)?)
+}
+
+/// Any accepted icon image as a `data:` URL, for previews of files the user
+/// picked. `None` for other file types or files over the size limit.
+pub fn image_data_url(path: &Path) -> Option<String> {
+    use base64::Engine;
+
+    let mime = match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => return None,
+    };
+    if std::fs::metadata(path).ok()?.len() > MAX_ICON_BYTES as u64 {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+fn now_millis() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 pub fn delete(root: &Path, id: &str) -> Result<(), InstanceError> {
@@ -205,6 +305,7 @@ mod tests {
             game_version: "26.3".into(),
             loader: Loader::Vanilla,
             loader_version: None,
+            icon_seed: None,
         }
     }
 
@@ -244,6 +345,31 @@ mod tests {
         assert!(instance_dir(dir.path(), "../x").is_err());
         assert!(instance_dir(dir.path(), "..").is_err());
         assert!(instance_dir(dir.path(), "").is_err());
+    }
+
+    #[test]
+    fn icons_replace_each_other_and_reject_junk() {
+        let dir = tempfile::tempdir().unwrap();
+        let instance = create(dir.path(), new("a")).unwrap();
+        let first = set_icon(dir.path(), &instance.id, b"png", "PNG").unwrap();
+        let first_path = icon_path(dir.path(), &first).unwrap();
+        assert!(first_path.is_file());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let second = set_icon(dir.path(), &instance.id, b"jpg", "jpg").unwrap();
+        assert!(!first_path.exists());
+        assert!(icon_path(dir.path(), &second).unwrap().is_file());
+
+        assert!(matches!(
+            set_icon(dir.path(), &instance.id, b"x", "exe"),
+            Err(InstanceError::BadIcon)
+        ));
+        let seeded = set_icon_seed(dir.path(), &instance.id, 7).unwrap();
+        assert_eq!((seeded.icon.clone(), seeded.icon_seed), (None, Some(7)));
+        assert_eq!(std::fs::read_dir(dir.path().join("a")).unwrap().count(), 1);
+
+        let mut tampered = seeded;
+        tampered.icon = Some("../../etc/passwd".into());
+        assert_eq!(icon_path(dir.path(), &tampered), None);
     }
 
     #[test]

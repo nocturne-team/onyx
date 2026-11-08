@@ -2,11 +2,12 @@
 
 ## Next
 
-- [ ] Instance icons: upload, randomize, show everywhere (rail, cards, instance page)
+- [ ] Content tab: list resource packs and shaders, not only mods
 
 ## Later
 
-- [ ] Content tab: list resource packs and shaders, not only mods
+- [ ] Icon editor ("Customize" in the Modrinth app): pick colors/patterns for the generated icon
+- [ ] Use the pack's icon for imported `.mrpack` files (only Browse installs get the Modrinth icon now)
 - [ ] Microsoft login: device code flow as a fallback when the browser redirect can't work
 - [ ] Settings: Java installations (pick a Java per instance, use a system JRE, Linux arm64 has no Mojang runtime)
 - [ ] Settings: memory per instance and a default (instance.json already has `maxMemoryMb`)

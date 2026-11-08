@@ -6,6 +6,7 @@
     Compass,
     PackageOpen,
     Plus,
+    RefreshCw,
     Search,
     Upload,
     X,
@@ -14,6 +15,8 @@
   import {
     createInstance,
     gameVersions,
+    imagePreview,
+    pickIconFile,
     loaderGameVersions,
     loaderNames,
     loaderVersions,
@@ -22,6 +25,7 @@
   } from "../instances.svelte";
   import { nav, openInstance } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browse.svelte";
+  import { randomSeed } from "../blockIcon";
   import InstanceIcon from "./InstanceIcon.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
@@ -39,6 +43,27 @@
   let otherVersion = $state<string | null>(null);
   let loaderError = $state<string | null>(null);
   let creating = $state(false);
+  let iconSeed = $state(randomSeed());
+  let iconPath = $state<string | null>(null);
+  let iconPreview = $state<string | null>(null);
+
+  async function uploadIcon() {
+    const path = await pickIconFile();
+    if (!path) return;
+    const preview = await imagePreview(path);
+    if (!preview) {
+      error = "Icons must be PNG, JPEG, WebP or GIF images under 4 MB";
+      return;
+    }
+    iconPath = path;
+    iconPreview = preview;
+  }
+
+  function randomizeIcon() {
+    iconPath = null;
+    iconPreview = null;
+    iconSeed = randomSeed();
+  }
   let error = $state<string | null>(null);
 
   const versions = gameVersions();
@@ -148,6 +173,8 @@
         gameVersion,
         loader,
         chosenLoaderVersion,
+        iconPath ? null : iconSeed,
+        iconPath,
       );
       openInstance(instance.id);
       onClose();
@@ -224,7 +251,11 @@
     {:else}
       <div class="body">
         <div class="icon-row">
-          <InstanceIcon size={112} />
+          <InstanceIcon seed={iconSeed} src={iconPreview} size={112} />
+          <div class="icon-buttons">
+            <button class="secondary" onclick={uploadIcon}><Upload size={16} /> Upload</button>
+            <button class="secondary" onclick={randomizeIcon}><RefreshCw size={16} /> Randomize</button>
+          </div>
         </div>
 
         <label class="label" for="create-name">Name</label>
@@ -482,7 +513,16 @@
   }
 
   .icon-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 6px;
+  }
+
+  .icon-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .text {
