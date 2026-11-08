@@ -17,7 +17,7 @@
 
 pkgname=onyx-launcher-git
 _pkgname=onyx
-pkgver=0.1.0
+pkgver=0.1.0.r34.g9f7743b
 pkgrel=1
 pkgdesc='Minecraft launcher and Modrinth client'
 arch=('x86_64' 'aarch64')
@@ -65,7 +65,8 @@ prepare() {
 build() {
   cd "$_pkgname"
   export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR=target
+  # Absolute, because cargo tauri runs cargo from src-tauri/.
+  export CARGO_TARGET_DIR="$PWD/target"
   # Runs `pnpm --dir ../ui build` first (beforeBuildCommand) and enables the
   # custom-protocol feature, which a plain `cargo build` would miss.
   cargo tauri build --no-bundle -- --frozen
