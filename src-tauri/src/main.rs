@@ -154,6 +154,7 @@ fn main() {
             account::my_projects,
             minecraft_account::minecraft_accounts,
             minecraft_account::login_minecraft,
+            minecraft_account::add_offline_account,
             minecraft_account::cancel_minecraft_login,
             minecraft_account::set_active_minecraft_account,
             minecraft_account::remove_minecraft_account,

@@ -2,7 +2,19 @@
   import { User } from "@lucide/svelte";
 
   /** Renders the face (plus hat layer) from a 64x64 Minecraft skin texture. */
-  let { skinUrl, size = 32 }: { skinUrl: string | null; size?: number } = $props();
+  let { skinUrl: rawSkinUrl, size = 32 }: { skinUrl: string | null; size?: number } = $props();
+
+  // Mojang's default skins, bundled. `default:<model>/<name>` in `skinUrl` names one.
+  const defaults = import.meta.glob<string>("../../assets/default-skins/*/*.png", {
+    eager: true,
+    query: "?url",
+    import: "default",
+  });
+  const skinUrl = $derived(
+    rawSkinUrl?.startsWith("default:")
+      ? (defaults[`../../assets/default-skins/${rawSkinUrl.slice(8)}.png`] ?? null)
+      : rawSkinUrl,
+  );
 </script>
 
 {#if skinUrl}

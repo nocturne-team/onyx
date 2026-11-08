@@ -2,6 +2,7 @@
 //! `accounts.json`, refresh tokens in the keyring, live tokens only in memory.
 
 use onyx_core::auth::microsoft::{self, MinecraftAccount, MinecraftSession, MsaConfig, MsaError};
+use onyx_core::auth::offline::{self, OfflineError};
 use onyx_core::auth::{self, Accounts};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -48,6 +49,34 @@ pub async fn login_minecraft(
     .map_err(|e| e.to_string())?;
 
     remember(&state, session).await
+}
+
+/// Adds a local offline account and makes it active. Needs at least one
+/// Microsoft account to be saved already. The head shown is the real skin of
+/// that name if one exists (the game itself will still show its default skin).
+#[tauri::command]
+pub async fn add_offline_account(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<MinecraftAccount, String> {
+    let name = name.trim();
+    offline::validate_name(name).map_err(|e| e.to_string())?;
+    if !state.accounts.lock().unwrap().has_microsoft() {
+        return Err(OfflineError::NeedsMicrosoft.to_string());
+    }
+    // The skin of a real account with this name, else the game's default one.
+    let real_skin = offline::lookup_skin(state.modrinth.http(), name).await;
+    let account = offline::account(name, real_skin).map_err(|e| e.to_string())?;
+    let mut accounts = state.accounts.lock().unwrap();
+    if !accounts.has_microsoft() {
+        return Err(OfflineError::NeedsMicrosoft.to_string());
+    }
+    if accounts.accounts.iter().any(|a| a.id == account.id) {
+        return Err(OfflineError::Duplicate.to_string());
+    }
+    accounts.upsert(account.clone());
+    save_accounts(&state, &accounts)?;
+    Ok(account)
 }
 
 #[tauri::command]
@@ -110,6 +139,16 @@ pub async fn active_session(state: &AppState) -> Result<MinecraftSession, String
         .active_account()
         .cloned()
         .ok_or("Sign in to Minecraft first")?;
+
+    if account.offline {
+        return Ok(MinecraftSession {
+            account,
+            xuid: "0".into(),
+            access_token: "0".into(),
+            expires_at: u64::MAX,
+            refresh_token: String::new(),
+        });
+    }
 
     let cached = state
         .minecraft_sessions

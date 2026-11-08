@@ -49,6 +49,12 @@ impl Accounts {
         }
     }
 
+    /// Whether a Microsoft account is saved, which is required before
+    /// offline ones can be added.
+    pub fn has_microsoft(&self) -> bool {
+        self.accounts.iter().any(|a| !a.offline)
+    }
+
     /// Removes the account; if it was active, the first remaining one becomes active.
     pub fn remove(&mut self, id: &str) {
         self.accounts.retain(|a| a.id != id);
@@ -67,6 +73,7 @@ mod tests {
             id: id.into(),
             name: format!("name-{id}"),
             skin_url: None,
+            offline: false,
         }
     }
 

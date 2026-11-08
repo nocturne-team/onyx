@@ -5,6 +5,7 @@ mod accounts;
 mod loopback;
 pub mod microsoft;
 mod oauth;
+pub mod offline;
 mod store;
 
 pub use accounts::Accounts;

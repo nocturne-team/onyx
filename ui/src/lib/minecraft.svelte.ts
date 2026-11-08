@@ -5,6 +5,7 @@ export interface MinecraftAccount {
   id: string;
   name: string;
   skinUrl: string | null;
+  offline?: boolean;
 }
 
 export const minecraft = $state({
@@ -38,6 +39,23 @@ export async function addMinecraftAccount() {
     if (message !== "login cancelled") minecraft.error = message;
   } finally {
     minecraft.signingIn = false;
+  }
+}
+
+/** Offline accounts need a Microsoft one first; the backend checks too. */
+export function canAddOffline(): boolean {
+  return minecraft.accounts.some((a) => !a.offline);
+}
+
+export async function addOfflineAccount(name: string): Promise<boolean> {
+  minecraft.error = null;
+  try {
+    await invoke<MinecraftAccount>("add_offline_account", { name });
+    await loadMinecraftAccounts();
+    return true;
+  } catch (e) {
+    minecraft.error = String(e);
+    return false;
   }
 }
 

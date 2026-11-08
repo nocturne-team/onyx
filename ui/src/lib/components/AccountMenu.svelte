@@ -2,6 +2,8 @@
   import { Check, FolderKanban, KeyRound, LoaderCircle, LogOut, Plus, X } from "@lucide/svelte";
   import {
     addMinecraftAccount,
+    addOfflineAccount,
+    canAddOffline,
     cancelMinecraftLogin,
     minecraft,
     removeAccount,
@@ -25,6 +27,16 @@
 
   let showToken = $state(false);
   let token = $state("");
+  let showOffline = $state(false);
+  let offlineName = $state("");
+
+  async function submitOffline(e: SubmitEvent) {
+    e.preventDefault();
+    if (await addOfflineAccount(offlineName.trim())) {
+      offlineName = "";
+      showOffline = false;
+    }
+  }
 
   function submitToken(e: SubmitEvent) {
     e.preventDefault();
@@ -46,6 +58,7 @@
       <button class="mc-account" onclick={() => setActiveAccount(mc.id)}>
         <SkinHead skinUrl={mc.skinUrl} size={28} />
         <span>{mc.name}</span>
+        {#if mc.offline}<span class="chip">Offline</span>{/if}
         {#if mc.id === minecraft.active}<Check size={16} />{/if}
       </button>
       <button class="remove" title="Remove {mc.name}" onclick={() => removeAccount(mc.id)}>
@@ -64,6 +77,27 @@
       <Plus size={18} />
       {minecraft.accounts.length ? "Add another account" : "Sign in with Microsoft"}
     </button>
+    {#if canAddOffline()}
+      {#if showOffline}
+        <form class="offline" onsubmit={submitOffline}>
+          <input
+            placeholder="Player name"
+            maxlength="16"
+            bind:value={offlineName}
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="secondary" type="submit" disabled={offlineName.trim().length < 3}>
+            Add
+          </button>
+        </form>
+      {:else}
+        <button class="item" onclick={() => (showOffline = true)}>
+          <Plus size={18} />
+          Add offline account
+        </button>
+      {/if}
+    {/if}
   {/if}
   {#if minecraft.error}
     <p class="error">{minecraft.error}</p>
@@ -174,6 +208,16 @@
     padding: 6px 8px;
     font-weight: 600;
     color: var(--text-strong);
+  }
+
+  .mc-account .chip {
+    flex: none;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-button-hover);
+    color: var(--text-secondary, inherit);
+    font-size: 11px;
+    font-weight: 600;
   }
 
   .mc-account span {

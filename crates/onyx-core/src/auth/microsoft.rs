@@ -61,6 +61,9 @@ pub struct MinecraftAccount {
     pub id: String,
     pub name: String,
     pub skin_url: Option<String>,
+    /// Local-only account without Microsoft sign-in (see `auth::offline`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub offline: bool,
 }
 
 /// A signed-in account with live tokens.
@@ -484,6 +487,7 @@ async fn minecraft_session(
             id: profile.id,
             name: profile.name,
             skin_url,
+            offline: false,
         },
         xuid: xuid_from_token(&minecraft.access_token).unwrap_or_else(|| "0".into()),
         access_token: minecraft.access_token,
