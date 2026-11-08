@@ -1,0 +1,9 @@
+<!-- Glyph: "blocks" from pixelarticons by Gerrit Halfmann, MIT License.
+     Drawn on a 32-unit grid so it renders pixel-exact at 32, 64, 128... px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <path fill="#16181c" d="M3 0h26v1h1v1h1v1h1v26h-1v1h-1v1h-1v1H3v-1H2v-1H1v-1H0V3h1V2h1V1h1z"/>
+  <g transform="translate(4 4)">
+    <path fill="#26292f" d="M3 7h6v6H3zm0 8h6v6H3zm8 0h6v6h-6zm4-12h6v6h-6z"/>
+    <path fill="#1bd96a" d="M15 1h6v2h-6zm-2 2h2v6h-2zm2 6h6v2h-6zm6-6h2v6h-2zM3 5h6v2H3zM1 7h2v14H1zm2 14h14v2H3zm14-6h2v6h-2zM3 13h14v2H3zM9 7h2v14H9z"/>
+  </g>
+</svg>

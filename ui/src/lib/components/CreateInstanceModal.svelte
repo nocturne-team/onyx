@@ -828,7 +828,13 @@
 
   .zip-row {
     margin-top: 12px;
+    gap: 16px;
     justify-content: space-between;
+  }
+
+  .zip-row button {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .path {

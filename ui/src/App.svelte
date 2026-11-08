@@ -12,12 +12,10 @@
   import JoinModal from "./lib/components/JoinModal.svelte";
   import JoinRequests from "./lib/components/JoinRequests.svelte";
   import { loadSettings, settings } from "./lib/settings/store.svelte";
-  import { pageTitles } from "./lib/nav";
-  import { nav } from "./lib/navigation.svelte";
+  import { nav, recordNavigation } from "./lib/navigation.svelte";
   import { library } from "./lib/pages/libraryState.svelte";
-  import { browse } from "./lib/pages/browseState.svelte";
   import { restoreSession } from "./lib/account.svelte";
-  import { initInstances, instanceById } from "./lib/instances.svelte";
+  import { initInstances } from "./lib/instances.svelte";
   import { loadMinecraftAccounts } from "./lib/minecraft.svelte";
   import { initInvites, invites } from "./lib/invites.svelte";
 
@@ -32,15 +30,8 @@
   loadMinecraftAccounts().catch((e) => console.error("failed to load Minecraft accounts", e));
   initInvites();
 
-  const title = $derived(
-    nav.page === "instance"
-      ? (instanceById(nav.instanceId)?.name ?? "Instance")
-      : nav.page === "project"
-        ? "Project"
-        : nav.page === "browse" && browse.target
-        ? `${browse.target.name} › Browse content`
-        : pageTitles[nav.page],
-  );
+  // Feeds the titlebar's back/forward arrows.
+  $effect(recordNavigation);
 
   function openMyProjects() {
     library.tab = "projects";
@@ -64,13 +55,13 @@
 </script>
 
 <div class="shell">
-  <Rail
-    onOpenSettings={() => (settingsOpen = true)}
-    onOpenAccount={() => (accountOpen = !accountOpen)}
-    onCreateInstance={() => (createOpen = true)}
-  />
-  <div class="column">
-    <Titlebar {title} />
+  <Titlebar />
+  <div class="body">
+    <Rail
+      onOpenSettings={() => (settingsOpen = true)}
+      onOpenAccount={() => (accountOpen = !accountOpen)}
+      onCreateInstance={() => (createOpen = true)}
+    />
     <main>
       {#if nav.page === "home"}
         <Home />
@@ -112,18 +103,19 @@
 <style>
   .shell {
     display: flex;
+    flex-direction: column;
     height: 100%;
   }
 
-  .column {
+  .body {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    min-width: 0;
+    min-height: 0;
   }
 
   main {
     flex: 1;
+    min-width: 0;
     /* `scroll`, not `auto`: when a page starts short and grows past the
        window (Home while loading), WebKitGTK adds the scrollbar without
        reflowing, then reflows on some later restyle and every card shifts.

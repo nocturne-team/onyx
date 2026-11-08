@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { House, Library, Plus, Search, Settings, User } from "@lucide/svelte";
+  import { Compass, House, Library, Plus, Settings, User } from "@lucide/svelte";
   import { account } from "../account.svelte";
   import { instances } from "../instances.svelte";
   import { activeAccount } from "../minecraft.svelte";
@@ -21,34 +21,30 @@
 
   const items = [
     { id: "home", label: "Home", icon: House },
-    { id: "browse", label: "Browse", icon: Search },
+    { id: "browse", label: "Browse", icon: Compass },
     { id: "library", label: "Library", icon: Library },
   ] as const;
+
+  // Installing into an instance from Browse or opening one of its projects
+  // still counts as being in that instance.
+  const activeInstance = $derived(
+    nav.page === "instance"
+      ? nav.instanceId
+      : nav.page === "browse" && browse.target
+        ? browse.target.id
+        : null,
+  );
 </script>
 
 <nav class="rail" data-tauri-drag-region>
-  <button
-    class="avatar"
-    title="Accounts"
-    aria-label="Accounts"
-    onclick={onOpenAccount}
-  >
-    {#if minecraftAccount}
-      <SkinHead skinUrl={minecraftAccount.skinUrl} size={30} />
-    {:else if account.user?.avatarUrl}
-      <img src={account.user.avatarUrl} alt="" />
-    {:else}
-      <User size={22} />
-    {/if}
-  </button>
-
   {#each items as item (item.id)}
+    {@const active = nav.page === item.id && !(item.id === "browse" && browse.target)}
     <button
       class="nav-button"
-      class:active={nav.page === item.id}
+      class:active
       title={item.label}
       aria-label={item.label}
-      aria-current={nav.page === item.id ? "page" : undefined}
+      aria-current={active ? "page" : undefined}
       onclick={() => {
         // The rail's Browse is the general one, not "install into X".
         if (item.id === "browse" && browse.target) {
@@ -62,31 +58,44 @@
     </button>
   {/each}
 
+  <div class="divider"></div>
+
+  {#each pinned as instance (instance.id)}
+    <button
+      class="instance"
+      class:active={activeInstance === instance.id}
+      title={instance.name}
+      aria-label={instance.name}
+      onclick={() => openInstance(instance.id)}
+    >
+      <InstanceIcon {instance} size={30} />
+      {#if instances.games[instance.id]}
+        <span class="running" class:preparing={instances.games[instance.id].phase === "preparing"}></span>
+      {/if}
+    </button>
+  {/each}
+
   {#if pinned.length}
     <div class="divider"></div>
-    {#each pinned as instance (instance.id)}
-      <button
-        class="instance"
-        class:active={nav.page === "instance" && nav.instanceId === instance.id}
-        title={instance.name}
-        aria-label={instance.name}
-        onclick={() => openInstance(instance.id)}
-      >
-        <InstanceIcon {instance} size={36} />
-        {#if instances.games[instance.id]}
-          <span class="running" class:preparing={instances.games[instance.id].phase === "preparing"}></span>
-        {/if}
-      </button>
-    {/each}
   {/if}
+
+  <button class="nav-button" title="New instance" aria-label="New instance" onclick={onCreateInstance}>
+    <Plus size={22} />
+  </button>
 
   <div class="spacer" data-tauri-drag-region></div>
 
-  <button class="new-instance" title="New instance" aria-label="New instance" onclick={onCreateInstance}>
-    <Plus size={24} />
-  </button>
   <button class="nav-button" title="Settings" aria-label="Settings" onclick={onOpenSettings}>
     <Settings size={22} />
+  </button>
+  <button class="nav-button avatar" title="Accounts" aria-label="Accounts" onclick={onOpenAccount}>
+    {#if minecraftAccount}
+      <SkinHead skinUrl={minecraftAccount.skinUrl} size={28} />
+    {:else if account.user?.avatarUrl}
+      <img src={account.user.avatarUrl} alt="" />
+    {:else}
+      <User size={22} />
+    {/if}
   </button>
 </nav>
 
@@ -97,9 +106,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 12px 0;
+    gap: 4px;
+    padding: 8px 0 12px;
     background: var(--bg-shell);
+    overflow-y: auto;
+    scrollbar-width: none;
   }
 
   .spacer {
@@ -108,20 +119,33 @@
   }
 
   button {
+    flex-shrink: 0;
     width: 48px;
     height: 48px;
     display: grid;
     place-items: center;
-    border-radius: var(--radius);
+    border-radius: 50%;
+    color: var(--text);
     transition:
       background 120ms,
       color 120ms;
   }
 
+  button:hover {
+    background: var(--bg-button);
+    color: var(--text-strong);
+  }
+
+  button.active {
+    background: var(--brand-highlight);
+    color: var(--brand);
+  }
+
   .divider {
+    flex-shrink: 0;
     width: 32px;
     height: 1px;
-    margin: 4px 0;
+    margin: 6px 0;
     background: var(--border);
   }
 
@@ -129,15 +153,10 @@
     position: relative;
   }
 
-  .instance:hover,
-  .instance.active {
-    background: var(--bg-button);
-  }
-
   .running {
     position: absolute;
-    right: 4px;
-    bottom: 4px;
+    right: 6px;
+    bottom: 6px;
     width: 10px;
     height: 10px;
     border-radius: 50%;
@@ -150,42 +169,13 @@
   }
 
   .avatar {
-    background: var(--bg-raised);
-    color: var(--text-muted);
-    margin-bottom: 8px;
     overflow: hidden;
   }
 
-  .avatar:hover {
-    color: var(--text-strong);
-  }
-
   .avatar img {
-    width: 100%;
-    height: 100%;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
     object-fit: cover;
-  }
-
-  .nav-button {
-    color: var(--text-muted);
-  }
-
-  .nav-button:hover {
-    background: var(--bg-button);
-    color: var(--text-strong);
-  }
-
-  .nav-button.active {
-    background: var(--bg-button);
-    color: var(--text-strong);
-  }
-
-  .new-instance {
-    background: var(--brand-bg);
-    color: var(--brand-text);
-  }
-
-  .new-instance:hover {
-    filter: brightness(1.1);
   }
 </style>

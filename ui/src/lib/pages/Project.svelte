@@ -23,7 +23,7 @@
     type ProjectPage,
     type ProjectVersion,
   } from "../modrinth";
-  import { goBack } from "../navigation.svelte";
+  import { goBack, nav } from "../navigation.svelte";
 
   let { id }: { id: string } = $props();
 
@@ -44,7 +44,9 @@
     tab = "description";
     projectPage(current)
       .then((p) => {
-        if (current === id) page = p;
+        if (current !== id) return;
+        page = p;
+        if (nav.projectId === id) nav.project = { title: p.title, iconUrl: p.iconUrl };
       })
       .catch((e) => (error = String(e)));
   });

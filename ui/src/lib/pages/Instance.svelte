@@ -10,7 +10,8 @@
     Palette,
     RefreshCw,
     ScrollText,
-    SlidersHorizontal,
+    Settings,
+    EllipsisVertical,
     Tag,
     Trash2,
     TriangleAlert,
@@ -46,7 +47,6 @@
     instances,
     loaderNames,
     pickIconFile,
-    type ContentKind,
     setInstanceIcon,
     setInstanceIconConfig,
     setInstanceJava,
@@ -102,22 +102,9 @@
       .then((java) => (pickedJava = java.major))
       .catch(() => (pickedJava = null));
   });
-  let contentKind = $state<ContentKind>("mods");
-  // Vanilla can't load mods, so it starts on resource packs.
-  $effect(() => {
-    if (instance?.loader === "vanilla" && contentKind === "mods") contentKind = "resourcepacks";
-  });
-  const contentKinds = $derived(
-    (
-      [
-        ["mods", "Mods"],
-        ["resourcepacks", "Resource packs"],
-        ["shaderpacks", "Shaders"],
-      ] as [ContentKind, string][]
-    ).filter(([kind]) => kind !== "mods" || instance?.loader !== "vanilla"),
-  );
   let confirmingDelete = $state(false);
   let iconMenu = $state(false);
+  let moreMenu = $state(false);
   let iconError = $state<string | null>(null);
 
   async function uploadIcon() {
@@ -316,18 +303,42 @@
         <PlayButton {id} />
         <button
           class="icon-button"
-          title="Open folder"
-          onclick={() => invoke("open_instance_folder", { id })}
+          class:active={tab === "options"}
+          title="Instance options"
+          aria-label="Instance options"
+          onclick={() => (tab = tab === "options" ? "content" : "options")}
         >
-          <FolderOpen size={20} />
+          <Settings size={22} />
         </button>
-        <button
-          class="icon-button danger"
-          title="Delete instance"
-          onclick={() => (confirmingDelete = true)}
-        >
-          <Trash2 size={20} />
-        </button>
+        <div class="more">
+          <button
+            class="icon-button flat"
+            title="More"
+            aria-label="More"
+            onclick={() => (moreMenu = !moreMenu)}
+          >
+            <EllipsisVertical size={22} />
+          </button>
+          {#if moreMenu}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <div class="menu-backdrop" onclick={() => (moreMenu = false)}></div>
+            <div class="icon-menu right">
+              <button
+                onclick={() => {
+                  moreMenu = false;
+                  invoke("open_instance_folder", { id });
+                }}><FolderOpen size={16} /> Open folder</button
+              >
+              <button
+                class="danger"
+                onclick={() => {
+                  moreMenu = false;
+                  confirmingDelete = true;
+                }}><Trash2 size={16} /> Delete instance</button
+              >
+            </div>
+          {/if}
+        </div>
       </div>
     </header>
 
@@ -429,18 +440,10 @@
       <button class:active={tab === "logs"} onclick={() => (tab = "logs")}>
         <ScrollText size={17} /> Logs
       </button>
-      <button class:active={tab === "options"} onclick={() => (tab = "options")}>
-        <SlidersHorizontal size={17} /> Options
-      </button>
     </nav>
 
     {#if tab === "content"}
-      <div class="kinds">
-        {#each contentKinds as [kind, label] (kind)}
-          <button class:active={contentKind === kind} onclick={() => (contentKind = kind)}>{label}</button>
-        {/each}
-      </div>
-      <ContentList {id} kind={contentKind} />
+      <ContentList {id} />
     {:else if tab === "options"}
       <section class="options">
         <h3>Memory</h3>
@@ -522,6 +525,8 @@
   .icon-button-edit {
     display: block;
     border-radius: 16px;
+    border: 1px solid var(--border);
+    overflow: hidden;
   }
 
   .icon-button-edit:hover {
@@ -627,20 +632,48 @@
     gap: 8px;
   }
 
+  .actions {
+    align-items: center;
+  }
+
   .icon-button {
-    width: 40px;
-    height: 40px;
+    width: 48px;
+    height: 48px;
     display: grid;
     place-items: center;
-    border-radius: var(--radius);
+    border-radius: 50%;
     background: var(--bg-button);
+    color: var(--text-strong);
   }
 
   .icon-button:hover {
     background: var(--bg-button-hover);
   }
 
-  .icon-button.danger:hover {
+  .icon-button.active {
+    background: var(--brand-highlight);
+    color: var(--brand);
+  }
+
+  .icon-button.flat {
+    width: 40px;
+    background: none;
+  }
+
+  .icon-button.flat:hover {
+    background: var(--bg-button);
+  }
+
+  .more {
+    position: relative;
+  }
+
+  .icon-menu.right {
+    left: auto;
+    right: 0;
+  }
+
+  .icon-menu button.danger:hover {
     color: #ff6b6b;
   }
 
@@ -714,7 +747,8 @@
     gap: 4px;
     align-self: flex-start;
     padding: 4px;
-    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    border-radius: 999px;
     background: var(--bg-raised);
   }
 
@@ -722,10 +756,10 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 7px 14px;
-    border-radius: var(--radius-sm);
+    padding: 7px 16px;
+    border-radius: 999px;
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text);
   }
 
   .tabs button:hover {
@@ -736,29 +770,6 @@
     background: var(--brand-highlight);
     color: var(--brand);
   }
-
-  .kinds {
-    display: flex;
-    gap: 6px;
-  }
-
-  .kinds button {
-    padding: 5px 12px;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-muted);
-  }
-
-  .kinds button:hover {
-    background: var(--bg-button);
-  }
-
-  .kinds button.active {
-    background: var(--bg-button);
-    color: var(--text-strong);
-  }
-
 
   .options {
     max-width: 640px;

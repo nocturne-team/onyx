@@ -126,7 +126,7 @@
 
   .menu {
     position: fixed;
-    top: 12px;
+    bottom: 12px;
     left: calc(var(--rail-width) + 4px);
     z-index: 6;
     width: 320px;
