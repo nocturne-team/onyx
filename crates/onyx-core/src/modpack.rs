@@ -192,7 +192,10 @@ pub fn extract_overrides(mrpack: &Path, game_dir: &Path) -> Result<(), ModpackEr
             let mut entry = archive
                 .by_index(i)
                 .map_err(|e| ModpackError::Invalid(e.to_string()))?;
-            let name = entry.name().to_owned();
+            let name = entry
+                .name()
+                .map_err(|e| ModpackError::Invalid(e.to_string()))?
+                .into_owned();
             let Some(rest) = name.strip_prefix(prefix) else {
                 continue;
             };
