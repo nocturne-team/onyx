@@ -39,11 +39,24 @@ fn main() {
         }
     }
 
+    // Escape hatch for release builds that never leave this machine (the local
+    // PKGBUILD). Anything distributed must not set it.
+    println!("cargo:rerun-if-env-changed=ONYX_ALLOW_PRISM_MSA_ID");
+    let allow_prism = std::env::var("ONYX_ALLOW_PRISM_MSA_ID").as_deref() == Ok("1");
+
     let release = std::env::var("PROFILE").as_deref() == Ok("release");
     if release && lookup("ONYX_MSA_CLIENT_ID").as_deref() == Some(PRISM_MSA_CLIENT_ID) {
-        panic!(
-            "ONYX_MSA_CLIENT_ID is Prism Launcher's client ID. Register Onyx's own Azure app \
-             before making a release build."
-        );
+        if allow_prism {
+            println!(
+                "cargo:warning=Release build uses Prism Launcher's MSA client ID \
+                 (ONYX_ALLOW_PRISM_MSA_ID=1). Local use only, don't distribute it."
+            );
+        } else {
+            panic!(
+                "ONYX_MSA_CLIENT_ID is Prism Launcher's client ID. Register Onyx's own Azure app \
+                 before making a release build (or set ONYX_ALLOW_PRISM_MSA_ID=1 for a build \
+                 that stays on this machine)."
+            );
+        }
     }
 }

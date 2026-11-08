@@ -17,3 +17,10 @@ ui/.svelte-kit/
 
 # Tauri (regenerated on build, per platform)
 src-tauri/gen/
+
+# makepkg output
+/packaging/arch/onyx/
+/packaging/arch/src/
+/packaging/arch/pkg/
+/packaging/arch/*.pkg.tar.*
+/packaging/arch/*.log

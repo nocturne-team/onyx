@@ -1,0 +1,89 @@
+# Maintainer: nocturne-team <contact@kkaii.xyz>
+#
+# Builds Onyx from git. Inside a checkout of the repo (packaging/arch/) it
+# clones the local repo, so unpushed commits are included; elsewhere it clones
+# GitHub. Only committed work is built.
+#
+# OAuth/Discord IDs are baked in at build time. They're read from the repo's
+# .env (or $ONYX_ENV_FILE), or from ONYX_* variables in the environment.
+#
+# While .env still has Prism Launcher's MSA client ID, the release guard in
+# crates/onyx-core/build.rs refuses to build. For a package that stays on this
+# machine:
+#
+#   ONYX_ALLOW_PRISM_MSA_ID=1 makepkg -si
+#
+# Don't publish a package built that way.
+
+pkgname=onyx-launcher-git
+_pkgname=onyx
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Minecraft launcher and Modrinth client'
+arch=('x86_64' 'aarch64')
+url='https://github.com/nocturne-team/onyx'
+license=('GPL-3.0-only')
+depends=('webkit2gtk-4.1' 'gtk3' 'glib2' 'cairo' 'pango' 'gdk-pixbuf2' 'libsoup3' 'openssl' 'hicolor-icon-theme')
+makedepends=('git' 'cargo' 'cargo-tauri' 'pnpm' 'nodejs')
+optdepends=('gnome-keyring: store Modrinth and Microsoft tokens (any Secret Service provider works)'
+            'kwallet: Secret Service provider on KDE')
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+# The Cargo profile already does fat LTO; makepkg's -flto only gets in the way.
+options=('!lto' '!debug')
+
+if [[ -d "$startdir/../../.git" ]]; then
+  _repo="git+file://$(realpath "$startdir/../..")"
+else
+  _repo="git+$url.git"
+fi
+source=("$_pkgname::$_repo")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_pkgname"
+  local base
+  base=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+  printf '%s.r%s.g%s' "$base" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$_pkgname"
+
+  local env_file=${ONYX_ENV_FILE:-$startdir/../../.env}
+  if [[ -f "$env_file" ]]; then
+    cp "$env_file" .env
+  else
+    warning "No .env found; OAuth and Discord IDs come from the environment only."
+  fi
+
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+  pnpm --dir ui install --frozen-lockfile
+}
+
+build() {
+  cd "$_pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  # Runs `pnpm --dir ../ui build` first (beforeBuildCommand) and enables the
+  # custom-protocol feature, which a plain `cargo build` would miss.
+  cargo tauri build --no-bundle -- --frozen
+}
+
+check() {
+  cd "$_pkgname"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen -p onyx-core
+}
+
+package() {
+  cd "$_pkgname"
+  install -Dm755 "target/release/$_pkgname" "$pkgdir/usr/bin/$_pkgname"
+  install -Dm644 docs/onyx.destop "$pkgdir/usr/share/applications/xyz.kkaii.Onyx.desktop"
+  install -Dm644 src-tauri/icons/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/xyz.kkaii.Onyx.svg"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/xyz.kkaii.Onyx.png"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/xyz.kkaii.Onyx.png"
+  install -Dm644 src-tauri/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/xyz.kkaii.Onyx.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
