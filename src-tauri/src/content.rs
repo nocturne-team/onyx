@@ -405,8 +405,50 @@ fn start_pack_install(
     pack: Option<PackSource>,
 ) {
     let root = state.paths.instances.clone();
-    let id = id.to_owned();
     let stage = format!("Installing {} {}", index.name, index.version_id);
+    let http = state.modrinth.http().clone();
+    let id_owned = id.to_owned();
+    run_in_background(
+        app,
+        state,
+        id,
+        stage,
+        "Modpack install failed",
+        cleanup,
+        move |progress| async move {
+            let id = id_owned;
+            let game_dir = instance::instance_dir(&root, &id).map_err(|e| e.to_string())?;
+            modpack::install(&http, &mrpack, &index, &game_dir, &progress)
+                .await
+                .map_err(|e| e.to_string())?;
+            let target = index.target().map_err(|e| e.to_string())?;
+            let mut instance = instance::load(&root, &id).map_err(|e| e.to_string())?;
+            instance.game_version = target.game_version;
+            instance.loader = target.loader;
+            instance.loader_version = target.loader_version;
+            instance.pack = pack;
+            instance::save(&root, &instance).map_err(|e| e.to_string())
+        },
+    );
+}
+
+/// Runs `work` for an instance as a "Preparing" game: progress goes out as
+/// `instance:state` every 250 ms, `stop_game` cancels it, and errors are
+/// reported as `"{failure}: {error}"`. `cleanup` is a file deleted at the end
+/// either way.
+pub(crate) fn run_in_background<F, Fut>(
+    app: AppHandle,
+    state: &AppState,
+    id: &str,
+    stage: String,
+    failure: &'static str,
+    cleanup: Option<PathBuf>,
+    work: F,
+) where
+    F: FnOnce(Arc<Progress>) -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
+{
+    let id = id.to_owned();
     state.games.lock().unwrap().insert(
         id.clone(),
         Game {
@@ -416,13 +458,12 @@ fn start_pack_install(
         },
     );
 
-    let work = {
+    let task = {
         let (app, id) = (app.clone(), id.clone());
         tokio::spawn(async move {
             let progress = Arc::new(Progress::default());
             let _ticker = AbortOnDrop({
-                let (app, id, progress, stage) =
-                    (app.clone(), id.clone(), progress.clone(), stage.clone());
+                let progress = progress.clone();
                 tokio::spawn(async move {
                     loop {
                         emit(
@@ -439,26 +480,15 @@ fn start_pack_install(
                     }
                 })
             });
-            let http = app.state::<AppState>().modrinth.http().clone();
-            let game_dir = instance::instance_dir(&root, &id).map_err(|e| e.to_string())?;
-            modpack::install(&http, &mrpack, &index, &game_dir, &progress)
-                .await
-                .map_err(|e| e.to_string())?;
-            let target = index.target().map_err(|e| e.to_string())?;
-            let mut instance = instance::load(&root, &id).map_err(|e| e.to_string())?;
-            instance.game_version = target.game_version;
-            instance.loader = target.loader;
-            instance.loader_version = target.loader_version;
-            instance.pack = pack;
-            instance::save(&root, &instance).map_err(|e| e.to_string())
+            work(progress).await
         })
     };
     if let Some(game) = state.games.lock().unwrap().get_mut(&id) {
-        game.abort = Some(work.abort_handle());
+        game.abort = Some(task.abort_handle());
     }
 
     tauri::async_runtime::spawn(async move {
-        let error = match work.await {
+        let error = match task.await {
             Ok(result) => result.err(),
             Err(e) if e.is_cancelled() => {
                 Some("cancelled; the instance may be incomplete, so update or delete it".to_owned())
@@ -468,20 +498,16 @@ fn start_pack_install(
         if let Some(path) = cleanup {
             let _ = tokio::fs::remove_file(path).await;
         }
-        finish_install(&app, &id, error);
+        app.state::<AppState>().games.lock().unwrap().remove(&id);
+        emit(
+            &app,
+            GameState {
+                id,
+                phase: None,
+                stage: None,
+                progress: None,
+                error: error.map(|e| format!("{failure}: {e}")),
+            },
+        );
     });
-}
-
-fn finish_install(app: &AppHandle, id: &str, error: Option<String>) {
-    app.state::<AppState>().games.lock().unwrap().remove(id);
-    emit(
-        app,
-        GameState {
-            id: id.to_owned(),
-            phase: None,
-            stage: None,
-            progress: None,
-            error: error.map(|e| format!("Modpack install failed: {e}")),
-        },
-    );
 }

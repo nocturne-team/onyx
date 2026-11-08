@@ -8,6 +8,7 @@ mod icons;
 mod instances;
 mod minecraft_account;
 mod presence;
+mod prism;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -153,6 +154,9 @@ fn main() {
             content::check_updates,
             content::apply_update,
             content::import_mrpack,
+            prism::prism_roots,
+            prism::prism_instances,
+            prism::import_prism_instances,
             content::install_modpack,
             content::check_pack_update,
             content::update_modpack,

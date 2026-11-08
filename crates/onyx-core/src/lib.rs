@@ -14,6 +14,7 @@ pub mod modpack;
 pub mod modrinth;
 pub mod mods;
 pub mod paths;
+pub mod prism;
 pub mod settings;
 
 pub use settings::{Settings, Theme};

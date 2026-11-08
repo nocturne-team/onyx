@@ -4,6 +4,7 @@
     Boxes,
     Check,
     Compass,
+    FolderOpen,
     PackageOpen,
     Plus,
     Palette,
@@ -26,13 +27,20 @@
   } from "../instances.svelte";
   import { nav, openInstance } from "../navigation.svelte";
   import { browse, runSearch } from "../pages/browseState.svelte";
-  import { randomIconConfig, type IconConfig } from "../iconCatalog";
+  import { defaultIconConfig, randomIconConfig, type IconConfig } from "../iconCatalog";
+  import {
+    importPrismInstances,
+    pickPrismFolder,
+    prismInstances,
+    prismRoots,
+    type PrismInstance,
+  } from "../prism";
   import IconEditor from "./IconEditor.svelte";
   import InstanceIcon from "./InstanceIcon.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
 
-  let step = $state<"type" | "custom">("type");
+  let step = $state<"type" | "custom" | "import">("type");
   let query = $state("");
   let name = $state("");
   let gameVersion = $state<string | null>(null);
@@ -168,6 +176,86 @@
     onClose();
   }
 
+  // Prism import: the data folder, its instances, and which ones are picked.
+  let prismRoot = $state<string | null>(null);
+  let prismList = $state<PrismInstance[] | null>(null);
+  let prismIcons = $state<Record<string, string>>({});
+  let picked = $state<Set<string>>(new Set());
+  let importing = $state(false);
+  const importable = $derived(prismList?.filter((i) => !i.unsupported) ?? []);
+
+  async function startImport() {
+    error = null;
+    step = "import";
+    if (prismRoot === null) {
+      const roots = await prismRoots().catch(() => []);
+      if (roots.length) await loadPrism(roots[0]);
+    }
+  }
+
+  async function choosePrismFolder() {
+    const path = await pickPrismFolder();
+    if (path) await loadPrism(path);
+  }
+
+  async function loadPrism(root: string) {
+    prismRoot = root;
+    prismList = null;
+    picked = new Set();
+    error = null;
+    try {
+      const list = await prismInstances(root);
+      if (prismRoot !== root) return;
+      prismList = list;
+      picked = new Set(list.filter((i) => !i.unsupported).map((i) => i.folder));
+      for (const i of list) {
+        if (!i.iconPath) continue;
+        imagePreview(i.iconPath).then((url) => {
+          if (url) prismIcons = { ...prismIcons, [i.folder]: url };
+        });
+      }
+    } catch (e) {
+      if (prismRoot === root) error = String(e);
+    }
+  }
+
+  function togglePicked(folder: string) {
+    const next = new Set(picked);
+    if (!next.delete(folder)) next.add(folder);
+    picked = next;
+  }
+
+  function toggleAll() {
+    picked =
+      picked.size === importable.length ? new Set() : new Set(importable.map((i) => i.folder));
+  }
+
+  function describe(i: PrismInstance) {
+    if (!i.loader || !i.gameVersion) return null;
+    const loader = i.loader === "vanilla" ? "Minecraft" : `${loaderNames[i.loader]} ${i.loaderVersion}`;
+    return `${loader} · ${i.gameVersion}`;
+  }
+
+  async function runImport() {
+    if (!prismRoot || !picked.size) return;
+    importing = true;
+    error = null;
+    try {
+      const { instances, errors } = await importPrismInstances(prismRoot, [...picked]);
+      if (errors.length) {
+        error = errors.join("\n");
+        if (!instances.length) return;
+      }
+      if (instances.length === 1) openInstance(instances[0].id);
+      else nav.page = "library";
+      if (!errors.length) onClose();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      importing = false;
+    }
+  }
+
   async function create() {
     if (!gameVersion) return;
     creating = true;
@@ -244,12 +332,84 @@
               <span class="muted">Install a modpack from an .mrpack file on your device.</span>
             </span>
           </button>
-          <button class="type" disabled>
+          <button class="type" onclick={startImport}>
             <span class="type-icon"><PackageOpen size={22} /></span>
             <span>
-              <strong>Import instance <em>Soon</em></strong>
-              <span class="muted">Import an instance from Prism, CurseForge, or similar.</span>
+              <strong>Import from Prism Launcher</strong>
+              <span class="muted">Copy instances from Prism Launcher or MultiMC, with their worlds and mods.</span>
             </span>
+          </button>
+        </div>
+      </div>
+    {:else if step === "import"}
+      <div class="body">
+        <span class="label">Prism Launcher folder</span>
+        <div class="folder-row">
+          <span class="path" title={prismRoot ?? undefined}>{prismRoot ?? "Not found"}</span>
+          <button class="secondary" onclick={choosePrismFolder}>
+            <FolderOpen size={16} /> Choose
+          </button>
+        </div>
+
+        {#if prismRoot === null}
+          <p class="muted">
+            Prism Launcher wasn't found in its usual place. Choose its data folder (the one with
+            <code>prismlauncher.cfg</code> and <code>instances</code> in it).
+          </p>
+        {:else if prismList === null && !error}
+          <p class="muted">Reading instances...</p>
+        {:else if prismList && !prismList.length}
+          <p class="muted">There are no instances in this folder.</p>
+        {:else if prismList}
+          <div class="version-label">
+            <span class="label">Instances</span>
+            <button class="link" onclick={toggleAll} disabled={!importable.length}>
+              {picked.size === importable.length ? "Select none" : "Select all"}
+            </button>
+          </div>
+          <ul class="prism-list">
+            {#each prismList as i (i.folder)}
+              <li>
+                <label class:disabled={!!i.unsupported}>
+                  <input
+                    type="checkbox"
+                    checked={picked.has(i.folder)}
+                    disabled={!!i.unsupported}
+                    onchange={() => togglePicked(i.folder)}
+                  />
+                  <InstanceIcon
+                    config={defaultIconConfig(i.folder)}
+                    src={prismIcons[i.folder] ?? null}
+                    size={40}
+                  />
+                  <span class="prism-text">
+                    <strong>{i.name}</strong>
+                    {#if i.unsupported}
+                      <span class="muted">Can't import: {i.unsupported}</span>
+                    {:else}
+                      <span class="muted">
+                        {describe(i)}{#if i.packPlatform} · from {i.packPlatform}{/if}
+                      </span>
+                    {/if}
+                  </span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+          <p class="muted">
+            Files are copied, so Prism keeps its instances. Big modpacks can take a minute.
+          </p>
+        {/if}
+
+        {#if error}<p class="error">{error}</p>{/if}
+
+        <div class="actions">
+          <button class="secondary" onclick={() => ((step = "type"), (error = null))}>
+            <ArrowLeft size={16} /> Back
+          </button>
+          <button class="primary" onclick={runImport} disabled={!picked.size || importing}>
+            <PackageOpen size={16} />
+            {picked.size === 1 ? "Import 1 instance" : `Import ${picked.size} instances`}
           </button>
         </div>
       </div>
@@ -505,15 +665,6 @@
     color: var(--text-strong);
   }
 
-  .type em {
-    margin-left: 6px;
-    padding: 1px 7px;
-    border-radius: 999px;
-    background: var(--bg-raised);
-    font-size: 0.75rem;
-    font-style: normal;
-    color: var(--text-muted);
-  }
 
   .type-icon {
     width: 46px;
@@ -639,5 +790,89 @@
   .error {
     color: #ff6b6b;
     font-size: 0.9rem;
+    white-space: pre-line;
+  }
+
+  .folder-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .path {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    line-height: 38px;
+    padding: 0 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: var(--bg-button);
+    border-radius: var(--radius-sm);
+    color: var(--text-strong);
+  }
+
+  .link {
+    background: none;
+    color: var(--brand);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .link:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .prism-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+
+  .prism-list label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-button);
+    cursor: pointer;
+  }
+
+  .prism-list label:not(.disabled):hover {
+    background: var(--bg-button-hover);
+  }
+
+  .prism-list label.disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .prism-list input {
+    accent-color: var(--brand);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .prism-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .prism-text strong {
+    color: var(--text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
