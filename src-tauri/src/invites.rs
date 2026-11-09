@@ -101,7 +101,11 @@ pub fn register_schemes(app: &AppHandle) {
     #[cfg(any(windows, target_os = "linux"))]
     {
         use tauri_plugin_deep_link::DeepLinkExt;
+        // `Env::appimage` only exists on Linux.
+        #[cfg(target_os = "linux")]
         let own = cfg!(debug_assertions) || app.env().appimage.is_some();
+        #[cfg(not(target_os = "linux"))]
+        let own = cfg!(debug_assertions);
         let app = app.clone();
         std::thread::spawn(move || {
             let onyx = own.then(|| invite::SCHEME.to_owned());
